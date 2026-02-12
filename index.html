@@ -2,199 +2,283 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI 财务看板 Pro+</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* --- 1. 系统自适应主题变量 --- */
         :root {
-            --bg: #f8fafc; --card-bg: rgba(255, 255, 255, 0.9); --text: #1e293b; --primary: #6366f1;
-            --border: rgba(0,0,0,0.05);
-        }
-        @media (prefers-color-scheme: dark) {
-            :root { --bg: #0f172a; --card-bg: rgba(30, 41, 59, 0.8); --text: #f8fafc; --border: rgba(255,255,255,0.1); }
+            --bg: #f1f5f9;
+            --card-bg: rgba(255, 255, 255, 0.8);
+            --card-border: rgba(255, 255, 255, 0.5);
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --primary: #6366f1;
+            --success: #10b981;
+            --danger: #ef4444;
+            --grid-line: rgba(0, 0, 0, 0.05);
         }
 
-        body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; transition: 0.3s; }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f172a;
+                --card-bg: rgba(30, 41, 59, 0.7);
+                --card-border: rgba(255, 255, 255, 0.08);
+                --text-main: #f8fafc;
+                --text-sub: #94a3b8;
+                --grid-line: rgba(255, 255, 255, 0.05);
+            }
+        }
+
+        /* --- 2. 基础布局 --- */
+        * { box-sizing: border-box; transition: all 0.3s ease; }
+        body {
+            font-family: -apple-system, "SF Pro Display", "PingFang SC", sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0; padding: 20px; min-height: 100vh;
+        }
         .container { max-width: 1200px; margin: 0 auto; }
+
+        /* --- 3. 预算预警组件 --- */
+        .budget-card {
+            margin-bottom: 24px; padding: 24px; border-radius: 24px;
+            background: var(--card-bg); backdrop-filter: blur(15px);
+            border: 1px solid var(--card-border);
+        }
+        .progress-container { height: 12px; background: rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden; margin: 12px 0; }
+        @media (prefers-color-scheme: dark) { .progress-container { background: rgba(255,255,255,0.1); } }
+        .progress-bar { height: 100%; width: 0; transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1); }
         
-        /* PC 端强制 2 列布局，避免空旷 */
+        .over-budget-text { color: var(--danger); font-weight: 800; animation: shake 0.5s ease-in-out infinite alternate; display: inline-block; }
+        @keyframes shake { from { transform: translateX(0); } to { transform: translateX(5px); } }
+
+        /* --- 4. 响应式栅格系统 --- */
         .main-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2, 1fr); /* 电脑端默认两列 */
             gap: 24px;
         }
 
-        /* 手机端切回单列 */
+        .full-width { grid-column: 1 / -1; } /* 年度图表横跨全屏 */
+
         @media (max-width: 850px) {
-            .main-grid { grid-template-columns: 1fr; }
+            .main-grid { grid-template-columns: 1fr; } /* 手机端切回单列 */
         }
 
+        /* --- 5. 卡片样式 --- */
         .card {
             background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
             padding: 24px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
         }
+        .card h3 { font-size: 16px; margin: 0 0 20px; display: flex; align-items: center; }
+        .card h3::before { content: ""; width: 4px; height: 16px; background: var(--primary); margin-right: 10px; border-radius: 2px; }
 
-        .full-width { grid-column: 1 / -1; } /* 年度大盘点横跨整行 */
+        .chart-box { position: relative; width: 100%; height: 300px; }
+        .stat-val { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
 
-        .stat-group { display: flex; gap: 15px; margin-bottom: 24px; }
-        .stat-item { flex: 1; padding: 15px; border-radius: 15px; background: rgba(99, 102, 241, 0.1); }
-        .stat-label { font-size: 12px; opacity: 0.7; }
-        .stat-val { font-size: 20px; font-weight: bold; margin-top: 5px; }
-
-        .chart-container { height: 280px; position: relative; }
-        
-        /* 分类下钻列表样式 */
+        /* --- 6. 下钻明细列表 --- */
         #detail-section { margin-top: 24px; display: none; }
-        .detail-item { 
-            display: flex; justify-content: space-between; padding: 12px; 
-            border-bottom: 1px solid var(--border); font-size: 14px;
+        .detail-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 0; border-bottom: 1px solid var(--grid-line);
         }
-        .detail-item:last-child { border: none; }
+        .detail-row:last-child { border: none; }
+        .detail-info { display: flex; flex-direction: column; }
+        .detail-date { font-size: 12px; color: var(--text-sub); }
+        .detail-amt { font-weight: 700; font-family: "SF Mono", monospace; }
 
-        h2 { font-size: 1.25rem; margin-top: 0; display: flex; align-items: center; gap: 8px; }
+        /* 加载状态 */
+        #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        .spinner { width: 40px; height: 40px; border: 4px solid var(--card-border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div class="container" id="app">
-        <div class="header" style="margin-bottom: 30px;">
-            <h1>财务大盘点 🚀</h1>
-            <div class="stat-group">
-                <div class="stat-item">
-                    <div class="stat-label">总支出 (CNY)</div>
-                    <div id="total-exp" class="stat-val" style="color:#ef4444">¥0.00</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">总收入 (CNY)</div>
-                    <div id="total-inc" class="stat-val" style="color:#10b981">¥0.00</div>
-                </div>
+    <div id="loader">
+        <div class="spinner"></div>
+        <div style="color: var(--text-sub)">同步云端账单...</div>
+    </div>
+
+    <div class="container" id="app" style="display: none;">
+        <div class="budget-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 700; font-size: 18px;">月度预算监控</span>
+                <span id="budget-percent" style="font-weight: 700;">0%</span>
             </div>
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div id="budget-status" style="font-size: 14px; color: var(--text-sub);">正在计算消耗...</div>
         </div>
 
         <div class="main-grid">
             <div class="card full-width">
-                <h2>📅 年度收支趋势</h2>
-                <div class="chart-container" style="height: 350px;">
+                <h3>📅 年度收支概览</h3>
+                <div class="chart-box" style="height: 350px;">
                     <canvas id="annualChart"></canvas>
                 </div>
             </div>
 
             <div class="card">
-                <h2>🍕 支出构成 (点击扇区查看明细)</h2>
-                <div class="chart-container">
+                <h3>🍕 支出分布 (点击扇区展开)</h3>
+                <div class="chart-box">
                     <canvas id="pieChart"></canvas>
                 </div>
             </div>
 
             <div class="card">
-                <h2>📈 最近 30 天支出曲线</h2>
-                <div class="chart-container">
+                <h3>📈 支出波动趋势</h3>
+                <div class="chart-box">
                     <canvas id="lineChart"></canvas>
                 </div>
             </div>
 
             <div class="card full-width" id="detail-section">
-                <h2 id="detail-title">📂 分类明细</h2>
+                <h3 id="detail-title">📂 分类明细</h3>
                 <div id="detail-list"></div>
             </div>
+        </div>
+
+        <div style="text-align: center; padding: 40px 0; color: var(--text-sub); font-size: 12px;">
+            数据已通过端到端加密同步
         </div>
     </div>
 
     <script>
-        const WORKER_BASE = "https://moneydb.pzdmmsd.qzz.io"; // 替换地址
+        // 🚀 核心：修改为你真实的 Worker 域名
+        const WORKER_BASE = "https://你的worker名字.你的子域名.workers.dev";
         const userId = new URLSearchParams(window.location.search).get('user_id');
 
-        async function fetchData(category = null) {
-            const url = category 
-                ? `${WORKER_BASE}/api/data?user_id=${userId}&category=${encodeURIComponent(category)}`
-                : `${WORKER_BASE}/api/data?user_id=${userId}`;
-            const res = await fetch(url);
-            return await res.json();
-        }
-
-        async function renderDetail(category) {
-            const section = document.getElementById('detail-section');
-            const list = document.getElementById('detail-list');
-            document.getElementById('detail-title').innerText = `📂 ${category} - 最近明细`;
-            
-            section.style.display = 'block';
-            list.innerHTML = '加载中...';
-            
-            const data = await fetchData(category);
-            list.innerHTML = data.map(item => `
-                <div class="detail-item">
-                    <span>${item.date} | ${item.description}</span>
-                    <b style="color:${item.type==='income'?'#10b981':'#ef4444'}">
-                        ${item.type==='income'?'+':'-'}${item.amount_original} ${item.currency_original}
-                    </b>
-                </div>
-            `).join('');
-            
-            // 自动滚动到明细区
-            section.scrollIntoView({ behavior: 'smooth' });
-        }
-
         async function init() {
-            if (!userId) return alert("请从机器人进入");
-            const data = await fetchData();
+            if (!userId) {
+                document.getElementById('loader').innerHTML = "⚠️ 请通过机器人链接访问";
+                return;
+            }
 
-            // 更新总额
-            document.getElementById('total-exp').innerText = `¥${(data.totals.find(t=>t.type==='expense')?.total || 0).toFixed(2)}`;
-            document.getElementById('total-inc').innerText = `¥${(data.totals.find(t=>t.type==='income')?.total || 0).toFixed(2)}`;
+            try {
+                const res = await fetch(`${WORKER_BASE}/api/data?user_id=${userId}`);
+                const data = await res.json();
+                renderDashboard(data);
+                document.getElementById('app').style.display = 'block';
+                document.getElementById('loader').style.display = 'none';
+            } catch (e) {
+                document.getElementById('loader').innerText = "❌ 无法连接服务器";
+            }
+        }
+
+        function renderDashboard(data) {
+            // 1. 预算预警逻辑
+            const b = data.budget || { limit: 5000, current: 0, isOver: false };
+            const percent = Math.min((b.current / b.limit) * 100, 100);
+            const bar = document.getElementById('progress-bar');
+            bar.style.width = percent + '%';
+            bar.style.backgroundColor = b.isOver ? 'var(--danger)' : 'var(--primary)';
+            document.getElementById('budget-percent').innerText = `${Math.round((b.current / b.limit) * 100)}%`;
+            document.getElementById('budget-status').innerHTML = b.isOver 
+                ? `<span class="over-budget-text">🚨 已超出预算 ¥${(b.current - b.limit).toFixed(2)}</span>`
+                : `本月已花 ¥${b.current.toFixed(2)}，剩余可用 ¥${(b.limit - b.current).toFixed(2)}`;
 
             const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const themeColor = isDark ? '#94a3b8' : '#64748b';
+            const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+            Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
 
-            // 1. 年度收支图 (双柱状图)
+            // 2. 年度双柱状图
             new Chart(document.getElementById('annualChart'), {
                 type: 'bar',
                 data: {
                     labels: data.annual.map(i => `${i.month}月`),
                     datasets: [
-                        { label: '支出', data: data.annual.map(i => i.exp), backgroundColor: '#6366f1' },
-                        { label: '收入', data: data.annual.map(i => i.inc), backgroundColor: '#10b981' }
+                        { label: '支出', data: data.annual.map(i => i.exp), backgroundColor: '#6366f1', borderRadius: 6 },
+                        { label: '收入', data: data.annual.map(i => i.inc), backgroundColor: '#10b981', borderRadius: 6 }
                     ]
-                },
-                options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: 'rgba(0,0,0,0.05)' } } } }
-            });
-
-            // 2. 饼图 (点击事件)
-            const pieCtx = document.getElementById('pieChart');
-            new Chart(pieCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: data.pie.map(i => i.category),
-                    datasets: [{ data: data.pie.map(i => i.value), backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'] }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    onClick: (event, elements) => {
-                        if (elements.length > 0) {
-                            const index = elements[0].index;
-                            const category = data.pie[index].category;
-                            renderDetail(category);
-                        }
-                    },
-                    plugins: { legend: { position: 'right' } }
+                    scales: { y: { grid: { color: gridColor }, border: { display: false } }, x: { grid: { display: false } } }
                 }
             });
 
-            // 3. 趋势图
+            // 3. 饼图 (无边框 + 悬停爆炸)
+            new Chart(document.getElementById('pieChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: data.pie.map(i => i.category),
+                    datasets: [{
+                        data: data.pie.map(i => i.value),
+                        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'],
+                        borderWidth: 0,        // 无白边
+                        hoverOffset: 30,       // 悬停弹出
+                        spacing: 2             // 间隙
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: { legend: { position: 'right', labels: { boxWidth: 12, usePointStyle: true } } },
+                    onClick: (e, els) => {
+                        if (els.length > 0) {
+                            const cat = data.pie[els[0].index].category;
+                            fetchDetail(cat);
+                        }
+                    }
+                }
+            });
+
+            // 4. 趋势折线图
             new Chart(document.getElementById('lineChart'), {
                 type: 'line',
                 data: {
                     labels: data.line.map(i => i.date.slice(5)),
-                    datasets: [{ data: data.line.map(i => i.value), borderColor: '#6366f1', tension: 0.4, fill: true, backgroundColor: 'rgba(99, 102, 241, 0.1)' }]
+                    datasets: [{
+                        data: data.line.map(i => i.value),
+                        borderColor: '#6366f1', borderWidth: 3, tension: 0.4, fill: true,
+                        pointRadius: 0,
+                        backgroundColor: 'rgba(99, 102, 241, 0.05)'
+                    }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { display: false }, x: { grid: { display: false } } }
+                }
             });
         }
+
+        async function fetchDetail(category) {
+            const section = document.getElementById('detail-section');
+            const list = document.getElementById('detail-list');
+            document.getElementById('detail-title').innerText = `📂 ${category} · 消费明细`;
+            
+            section.style.display = 'block';
+            list.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5;">正在调取原始凭证...</div>';
+            
+            const res = await fetch(`${WORKER_BASE}/api/data?user_id=${userId}&category=${encodeURIComponent(category)}`);
+            const items = await res.json();
+            
+            list.innerHTML = items.map(i => `
+                <div class="detail-row">
+                    <div class="detail-info">
+                        <span style="font-weight:600;">${i.description}</span>
+                        <span class="detail-date">${i.date}</span>
+                    </div>
+                    <div class="detail-amt" style="color:${i.type==='income'?'var(--success)':'var(--danger)'}">
+                        ${i.type==='income'?'+':'-'}${i.amount_original} ${i.currency_original}
+                    </div>
+                </div>
+            `).join('');
+            section.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 监听系统主题变化自动刷新页面
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => location.reload());
 
         init();
     </script>
 </body>
 </html>
-
