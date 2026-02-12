@@ -1,44 +1,63 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>我的私人账本报表</title>
+    <title>收支财务报表</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
-        .chart-container { position: relative; height:40vh; width:80vw; max-width: 100%; }
+        body { font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; text-align: center; background: #f4f7f6; }
+        .container { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 50px; }
+        canvas { max-width: 100%; margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h1>📊 消费趋势 (最近记录)</h1>
-    <div class="chart-container">
-        <canvas id="myChart"></canvas>
+    <div class="container">
+        <h1>📊 支出分类占比</h1>
+        <canvas id="pieChart"></canvas>
+        <div id="status">正在加载数据...</div>
     </div>
 
     <script>
-        async function loadData() {
-            // 替换成你自己的 Worker 地址
-            const response = await fetch('https://money.pzdmmsd.workers.dev/api/data');
-            const rawData = await response.json();
+        async function drawChart() {
+            try {
+                // ⚠️ 替换为你自己的 Worker 链接
+                const response = await fetch('https://你的Worker名.你的子域.workers.dev/api/data');
+                const data = await response.json();
 
-            // 处理数据给图表使用
-            const labels = rawData.map(item => item.date).reverse();
-            const amounts = rawData.map(item => item.amount_cny).reverse();
-
-            const ctx = document.getElementById('myChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'line', // 折线图
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '消费金额 (CNY)',
-                        data: amounts,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1
-                    }]
+                // 过滤支出数据
+                const expenses = data.filter(item => item.type === 'expense');
+                
+                if (expenses.length === 0) {
+                    document.getElementById('status').innerText = "暂无支出数据";
+                    return;
                 }
-            });
+
+                const labels = expenses.map(item => item.category);
+                const values = expenses.map(item => item.value);
+
+                const ctx = document.getElementById('pieChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'pie', // 饼状图
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: [
+                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
+                            ]
+                        }]
+                    },
+                    options: {
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
+                    }
+                });
+                document.getElementById('status').innerText = "";
+            } catch (err) {
+                document.getElementById('status').innerText = "加载失败: " + err.message;
+            }
         }
-        loadData();
+        drawChart();
     </script>
 </body>
 </html>
