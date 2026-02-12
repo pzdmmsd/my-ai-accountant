@@ -2,92 +2,234 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的个人账单报表</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 财务看板</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --p: #4f46e5; --bg: #f9fafb; }
-        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #1f2937; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .header { margin-bottom: 24px; text-align: center; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .stat-val { font-size: 24px; font-weight: bold; margin-top: 8px; color: var(--p); }
-        .chart-container { position: relative; height: 300px; margin-bottom: 24px; }
-        #status { text-align: center; padding: 40px; color: #6b7280; }
+        :root {
+            --primary: #6366f1;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --up: #10b981;
+            --down: #ef4444;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif;
+            background-color: var(--bg);
+            background-image: radial-gradient(circle at top right, #1e1b4b, var(--bg));
+            color: var(--text-main);
+            margin: 0;
+            padding: 16px;
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 500px; margin: 0 auto; }
+
+        .header {
+            padding: 20px 0;
+            text-align: left;
+        }
+
+        .header h1 { font-size: 24px; margin: 0; font-weight: 800; letter-spacing: -0.5px; }
+        .header p { color: var(--text-sub); margin: 4px 0 0; font-size: 14px; }
+
+        /* 统计卡片布局 */
+        .grid-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 16px;
+        }
+
+        .stat-label { font-size: 12px; color: var(--text-sub); font-weight: 500; }
+        .stat-val { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+        .val-exp { color: var(--down); }
+        .val-inc { color: var(--up); }
+
+        /* 图表卡片 */
+        .chart-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .chart-card h3 { 
+            font-size: 15px; 
+            margin: 0 0 16px; 
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+        }
+
+        .chart-card h3::before {
+            content: "";
+            width: 4px;
+            height: 14px;
+            background: var(--primary);
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+
+        .chart-box { position: relative; width: 100%; height: 240px; }
+
+        #status {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--text-sub);
+        }
+
+        /* 骨架屏动画 */
+        .loading-pulse {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(99, 102, 241, 0.2);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div class="container" id="app" style="display: none;">
-        <div class="header"><h1>📊 财务分析看板</h1></div>
-        
-        <div class="grid">
-            <div class="card"><div>总支出 (CNY)</div><div id="total-expense" class="stat-val">¥0.00</div></div>
-            <div class="card"><div>总收入 (CNY)</div><div id="total-income" class="stat-val">¥0.00</div></div>
-        </div>
+    <div id="status">
+        <div class="loading-pulse"></div>
+        <div>正在同步您的账单数据...</div>
+    </div>
 
-        <div class="grid">
+    <div class="container" id="app" style="display: none;">
+        <div class="header">
+            <h1>我的财务看板</h1>
+            <p id="date-range">最近 30 天数据分析</p>
+        </div>
+        
+        <div class="grid-stats">
             <div class="card">
-                <h3>分类支出占比</h3>
-                <div class="chart-container"><canvas id="pieChart"></canvas></div>
+                <div class="stat-label">总支出 (CNY)</div>
+                <div id="total-expense" class="stat-val val-exp">¥0.00</div>
             </div>
             <div class="card">
-                <h3>最近 30 天支出趋势</h3>
-                <div class="chart-container"><canvas id="lineChart"></canvas></div>
+                <div class="stat-label">总收入 (CNY)</div>
+                <div id="total-income" class="stat-val val-inc">¥0.00</div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>最近趋势</h3>
+            <div class="chart-box">
+                <canvas id="lineChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>支出分布</h3>
+            <div class="chart-box">
+                <canvas id="pieChart"></canvas>
             </div>
         </div>
     </div>
-    <div id="status">正在加载您的账单数据...</div>
 
     <script>
-        // 🚀 修改这里：填写你的 Worker 完整地址 (必须 https 开头)
+        // 🚀 修改这里：填写你的 Worker 完整地址 (必须是 https)
         const WORKER_BASE = "https://moneydb.pzdmmsd.qzz.io";
 
         async function init() {
-            const params = new URLSearchParams(window.location.search);
-            const userId = params.get('user_id');
-
+            const userId = new URLSearchParams(window.location.search).get('user_id');
             if (!userId) {
-                document.getElementById('status').innerText = "⚠️ 未检测到 User ID，请通过机器人链接访问。";
+                document.getElementById('status').innerHTML = "⚠️ 请从 Telegram 机器人进入页面";
                 return;
             }
 
             try {
                 const res = await fetch(`${WORKER_BASE}/api/data?user_id=${userId}`);
-                if (!res.ok) throw new Error(await res.text());
+                if (!res.ok) throw new Error("API 响应错误");
                 const data = await res.json();
-
                 render(data);
                 document.getElementById('app').style.display = 'block';
                 document.getElementById('status').style.display = 'none';
             } catch (e) {
-                document.getElementById('status').innerHTML = `❌ 加载失败: ${e.message}<br><small>请检查 Worker 是否配置了正确的 CORS 响应</small>`;
+                document.getElementById('status').innerText = "❌ 加载失败，请检查网络";
             }
         }
 
         function render(data) {
+            // 设置总数
             const exp = data.totals.find(t => t.type === 'expense')?.total || 0;
             const inc = data.totals.find(t => t.type === 'income')?.total || 0;
-            document.getElementById('total-expense').innerText = `¥${Number(exp).toFixed(2)}`;
-            document.getElementById('total-income').innerText = `¥${Number(inc).toFixed(2)}`;
+            document.getElementById('total-expense').innerText = `¥${Number(exp).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('total-income').innerText = `¥${Number(inc).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
-            // 饼图
-            new Chart(document.getElementById('pieChart'), {
-                type: 'doughnut',
-                data: {
-                    labels: data.pie.map(i => i.category),
-                    datasets: [{ data: data.pie.map(i => i.value), backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'] }]
-                }
-            });
+            // 通用图表配置
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.font.family = 'system-ui';
 
-            // 折线图
+            // 1. 折线图 (趋势)
             new Chart(document.getElementById('lineChart'), {
                 type: 'line',
                 data: {
                     labels: data.line.map(i => i.date.slice(5)),
-                    datasets: [{ label: '日支出', data: data.line.map(i => i.value), borderColor: '#4f46e5', tension: 0.3, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.1)' }]
+                    datasets: [{
+                        label: '支出',
+                        data: data.line.map(i => i.value),
+                        borderColor: '#6366f1',
+                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        fill: true,
+                        tension: 0.4
+                    }]
                 },
-                options: { scales: { y: { beginAtZero: true } } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxRotation: 0 } },
+                        y: { border: { display: false }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    }
+                }
+            });
+
+            // 2. 环形图 (分类)
+            new Chart(document.getElementById('pieChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: data.pie.map(i => i.category),
+                    datasets: [{
+                        data: data.pie.map(i => i.value),
+                        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: { position: 'right', labels: { boxWidth: 12, padding: 15, font: { size: 12 } } }
+                    }
+                }
             });
         }
 
