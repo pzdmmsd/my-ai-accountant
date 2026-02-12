@@ -47,7 +47,7 @@
         async function loadDashboard() {
             try {
                 // ⚠️ 记得换成你绑定了自定义域名的 Worker 地址
-                const response = await fetch('https://api.yourdomain.com/api/data');
+                const response = await fetch('https://moneydb.pzdmmsd.qzz.io/api/data');
                 const data = await response.json();
 
                 // 1. 填充总额
@@ -91,3 +91,4 @@
     </script>
 </body>
 </html>
+
