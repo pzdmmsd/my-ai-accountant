@@ -44,11 +44,23 @@
     </div>
 
     <script>
+        // 前端代码 script 部分修改：
         async function loadDashboard() {
             try {
-                // ⚠️ 记得换成你绑定了自定义域名的 Worker 地址
-                const response = await fetch('https://moneydb.pzdmmsd.qzz.io/api/data');
+                // 获取 URL 中的 user_id，例如：xxx.pages.dev/?user_id=123456
+                const urlParams = new URLSearchParams(window.location.search);
+                const userId = urlParams.get('user_id');
+        
+                if (!userId) {
+                    alert("请通过机器人发送的链接访问，以查看个人报表。");
+                    return;
+                }
+        
+                // 修改 API 调用，带上 user_id
+                const response = await fetch(`https://moneydb.pzdmmsd.qzz.io/api/data?user_id=${userId}`);
                 const data = await response.json();
+                
+                // ... 后续渲染逻辑保持不变 ...
 
                 // 1. 填充总额
                 const inc = data.totals.find(t => t.type === 'income')?.total || 0;
@@ -91,4 +103,5 @@
     </script>
 </body>
 </html>
+
 
