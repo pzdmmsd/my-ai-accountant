@@ -1,83 +1,93 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>我的财务看板</title>
+    <title>私人财务报表</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'PingFang SC', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
-        .dashboard { max-width: 1000px; margin: auto; display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
-        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); flex: 1; min-width: 300px; }
-        h2 { color: #333; font-size: 18px; margin-top: 0; text-align: center; }
-        #status { text-align: center; margin-top: 20px; color: #666; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+        .container { max-width: 1000px; margin: auto; }
+        .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; }
+        .stat-card h3 { margin: 0; font-size: 14px; text-transform: uppercase; color: #64748b; }
+        .stat-card .amount { font-size: 32px; font-weight: 700; margin: 10px 0; }
+        .income { color: #10b981; } .expense { color: #f43f5e; }
+        .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .chart-card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        h2 { text-align: center; font-size: 18px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
-    <h1 style="text-align: center; color: #1a1a1a;">📊 我的私人财务报表</h1>
-    
-    <div class="dashboard">
-        <div class="card">
-            <h2>📈 消费趋势 (最近30天)</h2>
-            <canvas id="lineChart"></canvas>
+    <div class="container">
+        <h1 style="text-align:center; margin-bottom:40px;">💰 私人财务看板</h1>
+        
+        <div class="header-grid">
+            <div class="stat-card">
+                <h3>总收入 (CNY)</h3>
+                <div id="total-income" class="amount income">¥0.00</div>
+            </div>
+            <div class="stat-card">
+                <h3>总支出 (CNY)</h3>
+                <div id="total-expense" class="amount expense">¥0.00</div>
+            </div>
         </div>
 
-        <div class="card">
-            <h2>🍕 支出分类占比</h2>
-            <canvas id="pieChart"></canvas>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h2>🍕 支出分类占比</h2>
+                <canvas id="pieChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h2>📈 30天支出趋势</h2>
+                <canvas id="lineChart"></canvas>
+            </div>
         </div>
     </div>
 
-    <div id="status">正在同步数据库数据...</div>
-
     <script>
-        async function initDashboard() {
+        async function loadDashboard() {
             try {
-                // ⚠️ 记得换成你自己的 Worker 地址
-                const response = await fetch('https://moneydb.pzdmmsd.qzz.io/api/data');
+                // ⚠️ 记得换成你绑定了自定义域名的 Worker 地址
+                const response = await fetch('https://api.yourdomain.com/api/data');
                 const data = await response.json();
 
-                if (!data.line.length && !data.pie.length) {
-                    document.getElementById('status').innerText = "暂无数据，快去记账吧！";
-                    return;
-                }
+                // 1. 填充总额
+                const inc = data.totals.find(t => t.type === 'income')?.total || 0;
+                const exp = data.totals.find(t => t.type === 'expense')?.total || 0;
+                document.getElementById('total-income').innerText = `¥${Number(inc).toLocaleString()}`;
+                document.getElementById('total-expense').innerText = `¥${Number(exp).toLocaleString()}`;
 
-                // --- 1. 渲染折线图 ---
+                // 2. 饼图
+                new Chart(document.getElementById('pieChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.pie.map(i => i.category),
+                        datasets: [{
+                            data: data.pie.map(i => i.value),
+                            backgroundColor: ['#6366f1', '#f43f5e', '#eab308', '#22c55e', '#a855f7', '#06b6d4']
+                        }]
+                    }
+                });
+
+                // 3. 折线图
                 new Chart(document.getElementById('lineChart'), {
                     type: 'line',
                     data: {
-                        labels: data.line.map(item => item.date),
+                        labels: data.line.map(i => i.date),
                         datasets: [{
-                            label: '每日支出 (CNY)',
-                            data: data.line.map(item => item.value),
-                            borderColor: '#36A2EB',
-                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            label: '支出 (CNY)',
+                            data: data.line.map(i => i.value),
+                            borderColor: '#f43f5e',
+                            backgroundColor: 'rgba(244, 63, 94, 0.1)',
                             fill: true,
-                            tension: 0.3
+                            tension: 0.4
                         }]
                     }
                 });
-
-                // --- 2. 渲染饼状图 ---
-                new Chart(document.getElementById('pieChart'), {
-                    type: 'pie',
-                    data: {
-                        labels: data.pie.map(item => item.category),
-                        datasets: [{
-                            data: data.pie.map(item => item.value),
-                            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF']
-                        }]
-                    },
-                    options: {
-                        plugins: { legend: { position: 'bottom' } }
-                    }
-                });
-
-                document.getElementById('status').innerText = "数据已更新至最新时刻";
-            } catch (err) {
-                document.getElementById('status').innerText = "加载失败: " + err.message;
+            } catch (e) {
+                alert("加载失败: " + e.message);
             }
         }
-        initDashboard();
+        loadDashboard();
     </script>
 </body>
 </html>
-
