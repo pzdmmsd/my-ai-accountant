@@ -1,64 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>收支财务报表</title>
+    <title>我的财务看板</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; text-align: center; background: #f4f7f6; }
-        .container { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 50px; }
-        canvas { max-width: 100%; margin-top: 20px; }
+        body { font-family: 'PingFang SC', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .dashboard { max-width: 1000px; margin: auto; display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); flex: 1; min-width: 300px; }
+        h2 { color: #333; font-size: 18px; margin-top: 0; text-align: center; }
+        #status { text-align: center; margin-top: 20px; color: #666; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📊 支出分类占比</h1>
-        <canvas id="pieChart"></canvas>
-        <div id="status">正在加载数据...</div>
+    <h1 style="text-align: center; color: #1a1a1a;">📊 我的私人财务报表</h1>
+    
+    <div class="dashboard">
+        <div class="card">
+            <h2>📈 消费趋势 (最近30天)</h2>
+            <canvas id="lineChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h2>🍕 支出分类占比</h2>
+            <canvas id="pieChart"></canvas>
+        </div>
     </div>
 
+    <div id="status">正在同步数据库数据...</div>
+
     <script>
-        async function drawChart() {
+        async function initDashboard() {
             try {
-                // ⚠️ 替换为你自己的 Worker 链接
+                // ⚠️ 记得换成你自己的 Worker 地址
                 const response = await fetch('https://money.pzdmmsd.workers.dev/api/data');
                 const data = await response.json();
 
-                // 过滤支出数据
-                const expenses = data.filter(item => item.type === 'expense');
-                
-                if (expenses.length === 0) {
-                    document.getElementById('status').innerText = "暂无支出数据";
+                if (!data.line.length && !data.pie.length) {
+                    document.getElementById('status').innerText = "暂无数据，快去记账吧！";
                     return;
                 }
 
-                const labels = expenses.map(item => item.category);
-                const values = expenses.map(item => item.value);
-
-                const ctx = document.getElementById('pieChart').getContext('2d');
-                new Chart(ctx, {
-                    type: 'pie', // 饼状图
+                // --- 1. 渲染折线图 ---
+                new Chart(document.getElementById('lineChart'), {
+                    type: 'line',
                     data: {
-                        labels: labels,
+                        labels: data.line.map(item => item.date),
                         datasets: [{
-                            data: values,
-                            backgroundColor: [
-                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
-                            ]
+                            label: '每日支出 (CNY)',
+                            data: data.line.map(item => item.value),
+                            borderColor: '#36A2EB',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    }
+                });
+
+                // --- 2. 渲染饼状图 ---
+                new Chart(document.getElementById('pieChart'), {
+                    type: 'pie',
+                    data: {
+                        labels: data.pie.map(item => item.category),
+                        datasets: [{
+                            data: data.pie.map(item => item.value),
+                            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF']
                         }]
                     },
                     options: {
-                        plugins: {
-                            legend: { position: 'bottom' }
-                        }
+                        plugins: { legend: { position: 'bottom' } }
                     }
                 });
-                document.getElementById('status').innerText = "";
+
+                document.getElementById('status').innerText = "数据已更新至最新时刻";
             } catch (err) {
                 document.getElementById('status').innerText = "加载失败: " + err.message;
             }
         }
-        drawChart();
+        initDashboard();
     </script>
 </body>
 </html>
-
