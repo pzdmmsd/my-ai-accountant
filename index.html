@@ -1,107 +1,97 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-    <title>私人财务报表</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的个人账单报表</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
-        .container { max-width: 1000px; margin: auto; }
-        .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; }
-        .stat-card h3 { margin: 0; font-size: 14px; text-transform: uppercase; color: #64748b; }
-        .stat-card .amount { font-size: 32px; font-weight: 700; margin: 10px 0; }
-        .income { color: #10b981; } .expense { color: #f43f5e; }
-        .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
-        .chart-card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        h2 { text-align: center; font-size: 18px; margin-bottom: 20px; }
+        :root { --p: #4f46e5; --bg: #f9fafb; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #1f2937; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { margin-bottom: 24px; text-align: center; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-val { font-size: 24px; font-weight: bold; margin-top: 8px; color: var(--p); }
+        .chart-container { position: relative; height: 300px; margin-bottom: 24px; }
+        #status { text-align: center; padding: 40px; color: #6b7280; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 style="text-align:center; margin-bottom:40px;">💰 私人财务看板</h1>
+    <div class="container" id="app" style="display: none;">
+        <div class="header"><h1>📊 财务分析看板</h1></div>
         
-        <div class="header-grid">
-            <div class="stat-card">
-                <h3>总收入 (CNY)</h3>
-                <div id="total-income" class="amount income">¥0.00</div>
-            </div>
-            <div class="stat-card">
-                <h3>总支出 (CNY)</h3>
-                <div id="total-expense" class="amount expense">¥0.00</div>
-            </div>
+        <div class="grid">
+            <div class="card"><div>总支出 (CNY)</div><div id="total-expense" class="stat-val">¥0.00</div></div>
+            <div class="card"><div>总收入 (CNY)</div><div id="total-income" class="stat-val">¥0.00</div></div>
         </div>
 
-        <div class="chart-grid">
-            <div class="chart-card">
-                <h2>🍕 支出分类占比</h2>
-                <canvas id="pieChart"></canvas>
+        <div class="grid">
+            <div class="card">
+                <h3>分类支出占比</h3>
+                <div class="chart-container"><canvas id="pieChart"></canvas></div>
             </div>
-            <div class="chart-card">
-                <h2>📈 30天支出趋势</h2>
-                <canvas id="lineChart"></canvas>
+            <div class="card">
+                <h3>最近 30 天支出趋势</h3>
+                <div class="chart-container"><canvas id="lineChart"></canvas></div>
             </div>
         </div>
     </div>
+    <div id="status">正在加载您的账单数据...</div>
 
     <script>
-        // 前端代码 script 部分修改：
-        async function loadDashboard() {
+        // 🚀 修改这里：填写你的 Worker 完整地址 (必须 https 开头)
+        const WORKER_BASE = "https://moneydb.pzdmmsd.qzz.io";
+
+        async function init() {
+            const params = new URLSearchParams(window.location.search);
+            const userId = params.get('user_id');
+
+            if (!userId) {
+                document.getElementById('status').innerText = "⚠️ 未检测到 User ID，请通过机器人链接访问。";
+                return;
+            }
+
             try {
-                // 获取 URL 中的 user_id，例如：xxx.pages.dev/?user_id=123456
-                const urlParams = new URLSearchParams(window.location.search);
-                const userId = urlParams.get('user_id');
-        
-                if (!userId) {
-                    alert("请通过机器人发送的链接访问，以查看个人报表。");
-                    return;
-                }
-        
-                // 修改 API 调用，带上 user_id
-                const response = await fetch(`https://moneydb.pzdmmsd.qzz.io/api/data?user_id=${userId}`);
-                const data = await response.json();
-                
-                // ... 后续渲染逻辑保持不变 ...
+                const res = await fetch(`${WORKER_BASE}/api/data?user_id=${userId}`);
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
 
-                // 1. 填充总额
-                const inc = data.totals.find(t => t.type === 'income')?.total || 0;
-                const exp = data.totals.find(t => t.type === 'expense')?.total || 0;
-                document.getElementById('total-income').innerText = `¥${Number(inc).toLocaleString()}`;
-                document.getElementById('total-expense').innerText = `¥${Number(exp).toLocaleString()}`;
-
-                // 2. 饼图
-                new Chart(document.getElementById('pieChart'), {
-                    type: 'doughnut',
-                    data: {
-                        labels: data.pie.map(i => i.category),
-                        datasets: [{
-                            data: data.pie.map(i => i.value),
-                            backgroundColor: ['#6366f1', '#f43f5e', '#eab308', '#22c55e', '#a855f7', '#06b6d4']
-                        }]
-                    }
-                });
-
-                // 3. 折线图
-                new Chart(document.getElementById('lineChart'), {
-                    type: 'line',
-                    data: {
-                        labels: data.line.map(i => i.date),
-                        datasets: [{
-                            label: '支出 (CNY)',
-                            data: data.line.map(i => i.value),
-                            borderColor: '#f43f5e',
-                            backgroundColor: 'rgba(244, 63, 94, 0.1)',
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    }
-                });
+                render(data);
+                document.getElementById('app').style.display = 'block';
+                document.getElementById('status').style.display = 'none';
             } catch (e) {
-                alert("加载失败: " + e.message);
+                document.getElementById('status').innerHTML = `❌ 加载失败: ${e.message}<br><small>请检查 Worker 是否配置了正确的 CORS 响应</small>`;
             }
         }
-        loadDashboard();
+
+        function render(data) {
+            const exp = data.totals.find(t => t.type === 'expense')?.total || 0;
+            const inc = data.totals.find(t => t.type === 'income')?.total || 0;
+            document.getElementById('total-expense').innerText = `¥${Number(exp).toFixed(2)}`;
+            document.getElementById('total-income').innerText = `¥${Number(inc).toFixed(2)}`;
+
+            // 饼图
+            new Chart(document.getElementById('pieChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: data.pie.map(i => i.category),
+                    datasets: [{ data: data.pie.map(i => i.value), backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'] }]
+                }
+            });
+
+            // 折线图
+            new Chart(document.getElementById('lineChart'), {
+                type: 'line',
+                data: {
+                    labels: data.line.map(i => i.date.slice(5)),
+                    datasets: [{ label: '日支出', data: data.line.map(i => i.value), borderColor: '#4f46e5', tension: 0.3, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.1)' }]
+                },
+                options: { scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        init();
     </script>
 </body>
 </html>
-
-
