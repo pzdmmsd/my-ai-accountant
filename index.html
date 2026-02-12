@@ -124,7 +124,6 @@
     </div>
 
     <script>
-        // 🚀 修改为你真实的 Worker 域名
         const WORKER_BASE = "https://moneydb.pzdmmsd.qzz.io";
         const userId = new URLSearchParams(window.location.search).get('user_id');
 
@@ -141,12 +140,11 @@
                 document.getElementById('app').style.display = 'block';
                 document.getElementById('loader').style.display = 'none';
             } catch (e) {
-                document.getElementById('loader').innerText = "❌ 无法连接到 Worker，请检查跨域配置";
+                document.getElementById('loader').innerText = "❌ 无法连接到服务器，请检查 Worker 部署";
             }
         }
 
         function renderDashboard(data) {
-            // 1. 预算逻辑
             const b = data.budget || { limit: 5000, current: 0, isOver: false };
             const percent = Math.min((b.current / b.limit) * 100, 100);
             const bar = document.getElementById('progress-bar');
@@ -154,30 +152,33 @@
             bar.style.backgroundColor = b.isOver ? 'var(--danger)' : 'var(--primary)';
             document.getElementById('budget-percent').innerText = `${Math.round((b.current / b.limit) * 100)}%`;
             document.getElementById('budget-status').innerHTML = b.isOver 
-                ? `<span class="over-budget-text">🚨 警告：已超支 ¥${(b.current - b.limit).toFixed(2)}</span>`
+                ? `<span class="over-budget-text">🚨 已超支 ¥${(b.current - b.limit).toFixed(2)}</span>`
                 : `本月剩余可用：¥${(b.limit - b.current).toFixed(2)}`;
 
             const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
             Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
 
-            // 2. 年度柱状图
+            // 1. 年度柱状图 (优化：限制最大宽度)
             new Chart(document.getElementById('annualChart'), {
                 type: 'bar',
                 data: {
                     labels: data.annual.map(i => `${i.month}月`),
                     datasets: [
-                        { label: '支出', data: data.annual.map(i => i.exp), backgroundColor: '#6366f1', borderRadius: 8 },
-                        { label: '收入', data: data.annual.map(i => i.inc), backgroundColor: '#10b981', borderRadius: 8 }
+                        { label: '支出', data: data.annual.map(i => i.exp), backgroundColor: '#6366f1', borderRadius: 8, maxBarThickness: 30 },
+                        { label: '收入', data: data.annual.map(i => i.inc), backgroundColor: '#10b981', borderRadius: 8, maxBarThickness: 30 }
                     ]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    scales: { y: { grid: { color: gridColor }, border: { display: false } }, x: { grid: { display: false } } }
+                    scales: { 
+                        y: { grid: { color: gridColor }, border: { display: false } }, 
+                        x: { grid: { display: false } } 
+                    }
                 }
             });
 
-            // 3. 核心修复：饼图 (增加 layout.padding 防止扇区被边缘吃掉)
+            // 2. 饼图 (无边框 + 解决溢出)
             new Chart(document.getElementById('pieChart'), {
                 type: 'doughnut',
                 data: {
@@ -185,42 +186,29 @@
                     datasets: [{
                         data: data.pie.map(i => i.value),
                         backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'],
-                        borderWidth: 0,
-                        hoverOffset: 35, // 弹出距离
-                        spacing: 3
+                        borderWidth: 0, hoverOffset: 35, spacing: 3
                     }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    layout: {
-                        padding: 35 // ✨ 关键修复：给画布四周留出 35px 空间，防止 hover 弹出时被裁剪
-                    },
+                    layout: { padding: 40 }, // 留出足够空间供 hover 弹出
                     cutout: '72%',
-                    plugins: { 
-                        legend: { position: 'right', labels: { boxWidth: 10, usePointStyle: true, padding: 15 } } 
-                    },
-                    onClick: (e, els) => {
-                        if (els.length > 0) {
-                            const cat = data.pie[els[0].index].category;
-                            fetchDetail(cat);
-                        }
-                    }
+                    plugins: { legend: { position: 'right', labels: { boxWidth: 10, usePointStyle: true, padding: 15 } } },
+                    onClick: (e, els) => { if (els.length > 0) fetchDetail(data.pie[els[0].index].category); }
                 }
             });
 
-            // 4. 趋势线
+            // 3. 趋势图
             new Chart(document.getElementById('lineChart'), {
                 type: 'line',
                 data: {
                     labels: data.line.map(i => i.date.slice(5)),
                     datasets: [{
                         data: data.line.map(i => i.value),
-                        borderColor: '#6366f1', borderWidth: 4, tension: 0.45, fill: true,
-                        pointRadius: 0,
+                        borderColor: '#6366f1', borderWidth: 4, tension: 0.45, fill: true, pointRadius: 0,
                         backgroundColor: (c) => {
                             const g = c.chart.ctx.createLinearGradient(0, 0, 0, 300);
-                            g.addColorStop(0, 'rgba(99, 102, 241, 0.2)');
-                            g.addColorStop(1, 'rgba(99, 102, 241, 0)');
+                            g.addColorStop(0, 'rgba(99, 102, 241, 0.2)'); g.addColorStop(1, 'rgba(99, 102, 241, 0)');
                             return g;
                         }
                     }]
@@ -237,13 +225,10 @@
             const section = document.getElementById('detail-section');
             const list = document.getElementById('detail-list');
             document.getElementById('detail-title').innerText = `📂 ${category} · 消费明细回顾`;
-            
             section.style.display = 'block';
             list.innerHTML = '<div style="padding:30px; text-align:center; opacity:0.4;">正在检索数据库...</div>';
-            
             const res = await fetch(`${WORKER_BASE}/api/data?user_id=${userId}&category=${encodeURIComponent(category)}`);
             const items = await res.json();
-            
             list.innerHTML = items.map(i => `
                 <div class="detail-row">
                     <div style="display:flex; flex-direction:column;">
