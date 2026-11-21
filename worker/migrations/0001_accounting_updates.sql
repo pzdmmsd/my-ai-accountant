@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS accounting_updates (
+  update_id TEXT PRIMARY KEY,
+  imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
