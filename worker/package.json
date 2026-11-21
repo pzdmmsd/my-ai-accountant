@@ -11,5 +11,8 @@
     "@cloudflare/vite-plugin": "2.0.0-rc.3",
     "cf": "1.0.0-rc.2",
     "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }
