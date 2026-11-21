@@ -1,5 +1,5 @@
 import { extractTransactions } from "./nvidia.js";
-import { ImportError, readWorkbook } from "./workbook.js";
+import { ImportError, readStatement } from "./workbook.js";
 
 const dashboardHeaders = { "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" };
 
@@ -98,7 +98,7 @@ export default {
         chatId = String(msg.chat.id);
 
         if (msg.document) {
-          await sendMessage(chatId, "请发送 JPG、PNG、WebP 账单图片，或 XLSX、XLS 流水表。", env);
+          await sendMessage(chatId, "请发送 JPG、PNG、WebP 图片，或 XLSX、XLS、CSV 账单。微信和支付宝账单请先解压。", env);
         } else if (text) {
           if (text.startsWith("/start")) await handleStart(chatId, env);
           else if (text.startsWith("/help")) await handleHelp(chatId, env);
@@ -109,7 +109,7 @@ export default {
         }
       } catch (e) {
         console.error("Telegram update failed", { error: e.name });
-        if (chatId) await sendMessage(chatId, "❌ 处理失败，请稍后重试。", env);
+        if (chatId) await sendMessage(chatId, "处理失败，请稍后重试。", env);
       }
     })());
 
@@ -133,14 +133,14 @@ function accountingFile(msg) {
   const mime = document.mime_type || "";
   const file = { id: document.file_id, size: document.file_size };
   if (/\.(jpg|jpeg|png|webp)$/i.test(name) || /^image\/(jpeg|png|webp)$/i.test(mime)) return { ...file, kind: "image" };
-  if (/\.xlsx?$/i.test(name) || /^(application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet)$/i.test(mime)) return { ...file, kind: "workbook" };
+  if (/\.(xlsx?|csv)$/i.test(name) || /^(text\/csv|application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet)$/i.test(mime)) return { ...file, kind: "workbook" };
   return null;
 }
 
 async function downloadAccountingFile(file, env) {
   const megabytes = file.kind === "workbook" ? 2 : 5;
   const limit = megabytes * 1024 * 1024;
-  const tooLarge = () => new ImportError(`文件过大。${file.kind === "workbook" ? "Excel" : "图片"}文件上限为 ${megabytes} MB。`);
+  const tooLarge = () => new ImportError(`文件过大。${file.kind === "workbook" ? "流水表" : "图片"}文件上限为 ${megabytes} MB。`);
   if (file.size > limit) throw tooLarge();
   const api = `https://api.telegram.org/bot${env.TG_TOKEN}`;
   const metadata = await fetch(`${api}/getFile?file_id=${encodeURIComponent(file.id)}`, { signal: AbortSignal.timeout(10000) }).then(r => r.json());
@@ -199,14 +199,11 @@ async function saveAccountingUpdate(db, updateId, userId, botMsgId, transactions
   await db.batch(statements);
 }
 
-/**
- * 🤖 AI 记账核心
- */
 async function handleAccounting({ updateId, chatId: userId, text, file, date }, env) {
   if (await env.DB.prepare("SELECT 1 FROM accounting_updates WHERE update_id = ?").bind(updateId).first()) return;
   const loading = await fetch(`https://api.telegram.org/bot${env.TG_TOKEN}/sendMessage`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: userId, text: file?.kind === "workbook" ? "⏳ 正在读取 Excel 流水…" : "⏳ 正在识别账单…" }),
+    body: JSON.stringify({ chat_id: userId, text: file?.kind === "workbook" ? "正在读取流水表…" : "正在识别账单…" }),
     signal: AbortSignal.timeout(8000),
   }).then(r => r.json());
   if (!loading.ok || !loading.result?.message_id) throw new Error("Telegram acknowledgement failed");
@@ -216,9 +213,11 @@ async function handleAccounting({ updateId, chatId: userId, text, file, date }, 
   try {
     const bytes = file ? await downloadAccountingFile(file, env) : null;
     stage = file?.kind === "workbook" ? "workbook" : "nvidia";
-    const items = file?.kind === "workbook" ? readWorkbook(bytes) : await extractTransactions({ key: env.NVIDIA_API_KEY, date, text, image: bytes ? imageDataUrl(bytes) : undefined });
+    const { items, skipped = 0 } = file?.kind === "workbook"
+      ? readStatement(bytes)
+      : { items: await extractTransactions({ key: env.NVIDIA_API_KEY, date, text, image: bytes ? imageDataUrl(bytes) : undefined }) };
     if (!items.length) {
-      await editMessage(userId, botMsgId, "没有识别到可记账的收支，请补充金额或重发清晰的账单。", env);
+      await editMessage(userId, botMsgId, skipped ? `这份账单没有可入账的收支，已略过 ${skipped} 笔。` : "没有识别到可记账的收支，请补充金额或重发清晰的账单。", env);
       return;
     }
 
@@ -236,15 +235,17 @@ async function handleAccounting({ updateId, chatId: userId, text, file, date }, 
     stage = "database";
     await saveAccountingUpdate(env.DB, updateId, userId, botMsgId, transactions);
 
-    const summary = transactions.slice(0, 10).map(({ amount, currency, cny, type, category, description, date }) =>
-      `${type === "income" ? "💰" : "💸"} ${amount} ${currency} (${cny} CNY)\n📅 ${date} | 📂 ${escapeMarkdown(category)}\n📝 ${escapeMarkdown(description)}`
-    ).join("\n\n");
+    const summary = transactions.slice(0, 10).map(({ amount, currency, cny, type, category, description, date }) => {
+      const converted = currency === "CNY" ? "" : `（约 ${cny} CNY）`;
+      return `${type === "income" ? "+" : "−"}${amount} ${currency}${converted} · ${date} · ${escapeMarkdown(category)}${description ? `\n${escapeMarkdown(description)}` : ""}`;
+    }).join("\n\n");
+    const heading = `已记录 ${items.length} 笔收支${skipped ? `，略过 ${skipped} 笔` : ""}。${items.length > 10 ? "以下显示前 10 笔。" : ""}`;
     stage = "reply";
-    await editMessage(userId, botMsgId, `✅ 已记录 ${items.length} 笔收支\n\n${summary}\n\n[📊 查看财务看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env, botMsgId);
+    await editMessage(userId, botMsgId, `${heading}\n\n${summary}\n\n[查看财务看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env, botMsgId);
   } catch (e) {
-    console.error("Accounting request failed", { stage, error: e.name, status: e.message.match(/^NVIDIA NIM returned HTTP (\d+)$/)?.[1] });
-    const message = e instanceof ImportError ? e.message : stage === "reply" ? "账单已记录，请用 /list 查看。" : stage === "nvidia" ? "识别服务未能完成请求，本次未入账。请稍后重试。" : stage === "exchange" ? "暂时无法获取汇率，本次未入账。请稍后重试。" : "暂时无法完成记账，请稍后重试。";
-    await editMessage(userId, botMsgId, `❌ ${escapeMarkdown(message)}`, env);
+    console.error("Accounting request failed", { stage, error: e.name, reason: e.code, status: e.status });
+    const message = e instanceof ImportError ? e.message : stage === "reply" ? "账单已记录，请用 /list 查看。" : stage === "nvidia" && file ? "这张图片未能生成可入账的明细。可以裁成几张清晰的截图再发送。" : stage === "nvidia" ? "暂时无法识别这条消息，本次未入账。" : stage === "exchange" ? "暂时无法获取汇率，本次未入账。请稍后重试。" : "暂时无法完成记账，请稍后重试。";
+    await editMessage(userId, botMsgId, escapeMarkdown(message), env);
   }
 }
 
@@ -253,31 +254,40 @@ async function handleAccounting({ updateId, chatId: userId, text, file, date }, 
  */
 async function handleSetBudget(userId, text, env) {
   const amt = parseFloat(text.match(/\d+(\.\d+)?/)?.[0]);
-  if (!amt) return await sendMessage(userId, "⚠️ 请指定预算数字，如 `/budget 5000`", env);
+  if (!amt) return await sendMessage(userId, "请指定预算数字，如 `/budget 5000`。", env);
   await env.DB.prepare("INSERT OR REPLACE INTO settings (user_id, budget_limit) VALUES (?, ?)").bind(userId, amt).run();
-  await sendMessage(userId, `✅ 本月预算已调至 **¥${amt.toLocaleString()}**`, env);
+  await sendMessage(userId, `本月预算已调至 ¥${amt.toLocaleString()}。`, env);
 }
 
 async function handleStart(userId, env) {
-  await sendMessage(userId, `💼 **AI 财务管家 Pro+ 已就绪**\n\n发送文字、账单照片、JPG/PNG/WebP 文件或 Excel 流水即可记账。\n[🔗 点击开启可视化看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env);
+  await sendMessage(userId, `发送文字、账单照片、Excel 或 CSV 流水即可记账。微信和支付宝导出的账单请先解压。\n\n[打开财务看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env);
 }
 
 async function handleHelp(userId, env) {
-  await sendMessage(userId, `🛠 **功能指南**\n\n• /budget 8000 - 设预算\n• 金额：100 - 改错\n• 备注：内容 - 改备注\n• /list - 查明细`, env);
+  await sendMessage(userId, `/budget 8000 设置预算\n金额：100 修改最近一笔金额\n备注：内容 修改最近一笔备注\n/list 查看最近明细`, env);
 }
 
 async function handleListQuery(userId, env) {
   const { results } = await env.DB.prepare("SELECT * FROM bills WHERE user_id = ? AND date >= date('now','-30 day') ORDER BY date DESC, id DESC").bind(userId).all();
-  if (!results.length) return await sendMessage(userId, "📋 近期无记录。", env);
-  const grouped = results.reduce((a, r) => { (a[r.date] = a[r.date] || []).push(r); return a; }, {});
-  let txt = "📋 **最近明细**\n\n";
-  for (const date in grouped) {
-    const sum = grouped[date].reduce((s, r) => cleanTypeFormat(r.type)==='expense' ? s + r.amount_cny : s, 0).toFixed(2);
-    txt += `─── **${date}** (支:${sum}) ───\n`;
-    grouped[date].forEach(r => txt += `${cleanTypeFormat(r.type)==='income'?'➕':'➖'} ${r.amount_original}${r.currency_original} | ${r.category}\n    └ ${r.description}\n`);
-    txt += `\n`;
+  if (!results.length) return await sendMessage(userId, "近期无记录。", env);
+  const expenses = new Map();
+  for (const item of results) {
+    if (cleanTypeFormat(item.type) === "expense") expenses.set(item.date, (expenses.get(item.date) ?? 0) + Number(item.amount_cny));
   }
-  await sendMessage(userId, `${txt}[📊 Pro+ 看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env);
+  let txt = "最近 30 天的账单\n";
+  let previousDate;
+  let included = 0;
+  for (const row of results) {
+    const description = escapeMarkdown(String(row.description ?? "").slice(0, 140));
+    const header = row.date === previousDate ? "" : `\n${row.date} · 支出 ${(expenses.get(row.date) ?? 0).toFixed(2)} CNY\n`;
+    const line = `${header}${cleanTypeFormat(row.type) === "income" ? "+" : "−"}${row.amount_original} ${row.currency_original} · ${escapeMarkdown(String(row.category ?? "其他"))}${description ? `\n${description}` : ""}\n`;
+    if (txt.length + line.length > 3700) break;
+    txt += line;
+    previousDate = row.date;
+    included++;
+  }
+  if (included < results.length) txt += `\n另有 ${results.length - included} 笔未在这条消息中展开。\n`;
+  await sendMessage(userId, `${txt}\n[查看财务看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env);
 }
 
 async function handleUpdateAmount(userId, text, env) {
@@ -290,7 +300,7 @@ async function handleUpdateAmount(userId, text, env) {
     cny = parseFloat((amt * ex.conversion_rates.CNY).toFixed(2));
   }
   await env.DB.prepare("UPDATE bills SET amount_original = ?, amount_cny = ?, type = ? WHERE id = ?").bind(amt, cny, cleanTypeFormat(last.type), last.id).run();
-  await sendMessage(userId, `💰 金额已修正。`, env);
+  await sendMessage(userId, "金额已修正。", env);
 }
 
 async function handleUpdateRemark(userId, text, env) {
@@ -299,14 +309,14 @@ async function handleUpdateRemark(userId, text, env) {
   const part = text.replace(/^(备注|修改|更改|补)[:：\s]*/, "");
   const final = text.includes("补") ? `${last.description}，${part}` : part;
   await env.DB.prepare("UPDATE bills SET description = ?, type = ? WHERE id = ?").bind(final, cleanTypeFormat(last.type), last.id).run();
-  await sendMessage(userId, `📝 备注已更新。`, env);
+  await sendMessage(userId, "备注已更新。", env);
 }
 
 async function handleCallback(q, env) {
   await fetch(`https://api.telegram.org/bot${env.TG_TOKEN}/answerCallbackQuery`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ callback_query_id: q.id }) });
   if (q.data.startsWith("del_")) {
     await env.DB.prepare("DELETE FROM bills WHERE user_id = ? AND message_id = ?").bind(String(q.message.chat.id), q.data.replace("del_", "")).run();
-    await editMessage(String(q.message.chat.id), q.message.message_id, "🗑️ 记录已撤销。", env);
+    await editMessage(String(q.message.chat.id), q.message.message_id, "记录已撤销。", env);
   }
 }
 
@@ -323,7 +333,7 @@ function escapeMarkdown(text) { return text.replace(/[\\_*`\[]/g, "\\$&"); }
 async function sendMessage(c, t, e) { await fetch(`https://api.telegram.org/bot${e.TG_TOKEN}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: t, parse_mode: "Markdown" }) }); }
 async function editMessage(c, m, t, e, bid = null) {
   const body = { chat_id: c, message_id: m, text: t, parse_mode: "Markdown" };
-  if (bid) body.reply_markup = { inline_keyboard: [[{ text: "撤销此笔记账 🗑️", callback_data: `del_${bid}` }]] };
+  if (bid) body.reply_markup = { inline_keyboard: [[{ text: "撤销本次记账", callback_data: `del_${bid}` }]] };
   const response = await fetch(`https://api.telegram.org/bot${e.TG_TOKEN}/editMessageText`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
   if (!response.ok || !(await response.json()).ok) throw new Error("Telegram confirmation failed");
 }
