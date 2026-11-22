@@ -7,12 +7,15 @@ export type Dashboard = {
   income: number
   annual: YearMonth[]
   pie: Category[]
+  incomePie: Category[]
   line: DailyExpense[]
   budget: Budget
   categories: string[]
 }
 
 export type TransactionPage = { rows: Transaction[]; total: number; nextCursor: string | null }
+export type TransactionType = "income" | "expense"
+export type TransactionSort = "date" | "amount"
 
 export type Transaction = {
   id: number

@@ -36,6 +36,8 @@ test("monthly dashboard and complete transaction pages use the selected month an
   assert.deepEqual(summary.budget, { current: 110, limit: 75, isOver: true });
   assert.deepEqual(summary.annual.map(({ month, inc, exp }) => [month, inc, exp]), [["01", 200, 110], ["02", 0, 50]]);
   assert.deepEqual(summary.pie.map(({ category, value }) => [category, value]), [["餐饮", 103], ["未分类", 7]]);
+  assert.deepEqual(summary.incomePie, [{ category: "工资", value: 200 }]);
+  assert.deepEqual((await json({ view: "month", month: "2025-02" })).incomePie, []);
   assert.deepEqual(summary.line, [{ date: "2025-01-01", value: 7 }, { date: "2025-01-31", value: 103 }]);
   assert(summary.categories.includes("工资"));
 
@@ -52,6 +54,25 @@ test("monthly dashboard and complete transaction pages use the selected month an
   const wages = await json({ view: "transactions", month: "2025-01", category: "工资" });
   assert.equal(wages.total, 1);
   assert.equal(wages.rows[0].amount_cny, 200);
+  const monthlyTransactions = { view: "transactions", month: "2025-01" };
+  assert.deepEqual((await json({ ...monthlyTransactions, type: "income" })).rows, wages.rows);
+  const expenses = await json({ ...monthlyTransactions, type: "expense", sort: "amount" });
+  assert.equal(expenses.total, 104);
+  assert.equal(expenses.rows[0].type, "支出");
+  assert.equal((await json({ ...monthlyTransactions, type: "expense", category: "餐饮" })).total, 103);
+  assert.equal((await json({ ...monthlyTransactions, type: "income", category: "餐饮" })).total, 0);
+
+  const amountSort = { ...monthlyTransactions, sort: "amount" };
+  const largest = await json(amountSort);
+  const middle = await json({ ...amountSort, before: largest.nextCursor });
+  const smallest = await json({ ...amountSort, before: middle.nextCursor });
+  const sortedRows = [...largest.rows, ...middle.rows, ...smallest.rows];
+  assert.deepEqual(sortedRows.map(({ amount_cny }) => amount_cny), [200, 7, ...Array(103).fill(1)]);
+  assert.deepEqual(sortedRows.map(({ id }) => id), [104, 105, ...Array.from({ length: 103 }, (_, index) => 103 - index)]);
+  assert.equal(smallest.nextCursor, null);
+  assert.equal((await request({ ...amountSort, before: first.nextCursor })).status, 400);
+  assert.equal((await request({ ...monthlyTransactions, type: "unknown" })).status, 400);
+  assert.equal((await request({ ...monthlyTransactions, sort: "unknown" })).status, 400);
   assert.deepEqual(await json({ view: "transactions", month: "2025-03" }), { rows: [], total: 0, nextCursor: null });
   assert.equal((await request({ view: "month", month: "2025-13" })).status, 400);
   assert.equal((await request({ view: "transactions", month: "2025-02", before: first.nextCursor })).status, 400);

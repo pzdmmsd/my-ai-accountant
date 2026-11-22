@@ -38,9 +38,14 @@ export default {
         if (view === "month" || view === "transactions") {
           if (!targetMonth || !validMonth(targetMonth)) return Response.json({ error: "Expected month in YYYY-MM format" }, { status: 400, headers: dashboardHeaders });
           if (view === "month") return Response.json(await readDashboardMonth(env.DB, userId, targetMonth), { headers: dashboardHeaders });
-          const cursor = readTransactionCursor(url.searchParams.get("before"), targetMonth);
+          const type = url.searchParams.get("type");
+          const sort = url.searchParams.get("sort") ?? "date";
+          if ((type !== null && type !== "income" && type !== "expense") || (sort !== "date" && sort !== "amount")) {
+            return Response.json({ error: "Invalid transaction filter or sort" }, { status: 400, headers: dashboardHeaders });
+          }
+          const cursor = readTransactionCursor(url.searchParams.get("before"), targetMonth, sort);
           if (cursor === undefined) return Response.json({ error: "Invalid transaction cursor" }, { status: 400, headers: dashboardHeaders });
-          return Response.json(await readMonthlyTransactions(env.DB, userId, targetMonth, category, cursor), { headers: dashboardHeaders });
+          return Response.json(await readMonthlyTransactions(env.DB, userId, targetMonth, { category, type, sort, cursor }), { headers: dashboardHeaders });
         }
 
         // A. 分类明细
