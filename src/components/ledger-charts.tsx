@@ -9,7 +9,7 @@ export const categoryColors = ["#3159e9", "#7160df", "#0b9e90", "#e89d35", "#668
 const axisProps = { axisLine: false, tickLine: false, tick: { fill: "var(--muted-foreground)", fontSize: 11 } }
 const tooltipStyle = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, color: "var(--foreground)", boxShadow: "0 6px 22px #12214214", fontSize: 13 }
 
-export function CashFlowChart({ data, series }: { data: YearMonth[]; series: Series }) {
+export function CashFlowChart({ data, series, selectedMonth }: { data: YearMonth[]; series: Series; selectedMonth: number }) {
   const months = Array.from({ length: 12 }, (_, index) => {
     const month = index + 1
     const row = data.find((item) => Number(item.month) === month)
@@ -23,8 +23,12 @@ export function CashFlowChart({ data, series }: { data: YearMonth[]; series: Ser
         <XAxis {...axisProps} dataKey="name" tickMargin={10} interval="preserveStartEnd" minTickGap={8} />
         <YAxis {...axisProps} width={45} tickCount={5} tickFormatter={compactAmount} allowDecimals={false} />
         <Tooltip cursor={{ fill: "var(--muted)" }} formatter={(value: number) => money(value)} contentStyle={tooltipStyle} />
-        {series !== "expense" && <Bar dataKey="income" name="收入" fill="var(--color-income)" radius={[5, 5, 0, 0]} maxBarSize={25} isAnimationActive={false} />}
-        {series !== "income" && <Bar dataKey="expense" name="支出" fill="var(--primary)" radius={[5, 5, 0, 0]} maxBarSize={25} isAnimationActive={false} />}
+        {series !== "expense" && <Bar dataKey="income" name="收入" fill="var(--color-income)" radius={[5, 5, 0, 0]} maxBarSize={25} isAnimationActive={false}>
+          {months.map(({ name }, index) => <Cell key={name} fillOpacity={index + 1 === selectedMonth ? 1 : 0.55} />)}
+        </Bar>}
+        {series !== "income" && <Bar dataKey="expense" name="支出" fill="var(--primary)" radius={[5, 5, 0, 0]} maxBarSize={25} isAnimationActive={false}>
+          {months.map(({ name }, index) => <Cell key={name} fillOpacity={index + 1 === selectedMonth ? 1 : 0.55} />)}
+        </Bar>}
       </BarChart>
     </ResponsiveContainer>
   </div>
@@ -71,11 +75,12 @@ function ExpenseTooltip({ active, payload, total }: Pick<TooltipProps<number, st
   </div>
 }
 
-export function DailyChart({ data }: { data: DailyExpense[] }) {
+export function DailyChart({ data, month }: { data: DailyExpense[]; month: string }) {
   const values = new Map(data.map(({ date, value }) => [date, value]))
-  const today = new Date(Date.now() + 8 * 3_600_000)
-  const dates = Array.from({ length: 30 }, (_, index) => {
-    const date = new Date(today.getTime() - (29 - index) * 86_400_000).toISOString().slice(0, 10)
+  const last = new Date(`${month}-01T00:00:00Z`)
+  last.setUTCMonth(last.getUTCMonth() + 1, 0)
+  const dates = Array.from({ length: last.getUTCDate() }, (_, index) => {
+    const date = `${month}-${String(index + 1).padStart(2, "0")}`
     return { date, value: values.get(date) ?? 0 }
   })
   return <div className="chart-surface trend-chart" role="img" aria-label="每日支出折线图">

@@ -4,12 +4,15 @@ export type DailyExpense = { date: string; value: number }
 export type Budget = { limit: number; current: number; isOver: boolean }
 
 export type Dashboard = {
+  income: number
   annual: YearMonth[]
   pie: Category[]
   line: DailyExpense[]
-  months: { m: string }[]
   budget: Budget
+  categories: string[]
 }
+
+export type TransactionPage = { rows: Transaction[]; total: number; nextCursor: string | null }
 
 export type Transaction = {
   id: number
