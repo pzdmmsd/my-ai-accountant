@@ -15,7 +15,7 @@ export type Dashboard = {
 
 export type TransactionPage = { rows: Transaction[]; total: number; nextCursor: string | null }
 export type TransactionType = "income" | "expense"
-export type TransactionSort = "date" | "amount"
+export type TransactionSort = "date" | "date_asc" | "amount"
 
 export type Transaction = {
   id: number
@@ -61,4 +61,22 @@ export async function ledgerRequest<T>(userId: string, filters: Record<string, s
   const response = await fetch(url, { signal, cache: "no-store" })
   if (!response.ok) throw new Error(`Ledger request failed (${response.status})`)
   return response.json() as Promise<T>
+}
+
+export type LedgerAnswer = {
+  answer: string
+  sources: { start: string; end: string; search: string; count: number }[]
+}
+
+export async function askLedger(token: string, month: string, question: string): Promise<LedgerAnswer | "expired"> {
+  const response = await fetch(new URL("/api/ask", apiBase), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ month, question }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(55000),
+  })
+  if (response.status === 401) return "expired"
+  if (!response.ok) throw new Error(`Ledger question failed (${response.status})`)
+  return response.json() as Promise<LedgerAnswer>
 }

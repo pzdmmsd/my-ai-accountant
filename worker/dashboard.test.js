@@ -18,6 +18,8 @@ test("monthly dashboard and complete transaction pages use the selected month an
   transaction("2025-02-01", "expense", "交通", 50);
   transaction("2026-01-01", "income", "其他年份", 999);
   transaction("2025-01-31", "expense", "餐饮", 900, "other");
+  transaction("2024-02-29", "expense", "交通", 45);
+  transaction("2028-12-31", "income", "奖金", 800);
 
   const DB = {
     prepare: (sql) => ({ bind: (...args) => ({ all: async () => ({ results: sqlite.prepare(sql).all(...args) }) }) }),
@@ -30,7 +32,13 @@ test("monthly dashboard and complete transaction pages use the selected month an
     return response.json();
   }
 
-  assert.deepEqual(await json({ view: "months" }), ["2026-01", "2025-02", "2025-01"]);
+  assert.deepEqual(await json({ view: "months" }), ["2028-12", "2026-01", "2025-02", "2025-01", "2024-02"]);
+  assert.equal((await json({ view: "month", month: "2024-02" })).budget.current, 45);
+  assert.equal((await json({ view: "month", month: "2028-12" })).income, 800);
+  for (const date of ["2024-02-29", "2028-12-31"]) {
+    const data = await json({ view: "transactions", month: date.slice(0, 7), sort: "date_asc" });
+    assert.equal(data.rows[0].date, date);
+  }
   const summary = await json({ view: "month", month: "2025-01" });
   assert.equal(summary.income, 200);
   assert.deepEqual(summary.budget, { current: 110, limit: 75, isOver: true });
@@ -50,6 +58,14 @@ test("monthly dashboard and complete transaction pages use the selected month an
   const allIds = [...first.rows, ...second.rows, ...last.rows].map(({ id }) => id);
   assert.equal(new Set(allIds).size, 105);
   assert(last.rows.some(({ type }) => type === "income"));
+
+  const oldest = { view: "transactions", month: "2025-01", sort: "date_asc" };
+  const oldestFirst = await json(oldest);
+  const oldestSecond = await json({ ...oldest, before: oldestFirst.nextCursor });
+  const oldestLast = await json({ ...oldest, before: oldestSecond.nextCursor });
+  assert.deepEqual([...oldestFirst.rows, ...oldestSecond.rows, ...oldestLast.rows].map(({ id }) => id), allIds.toReversed());
+  assert.equal(oldestLast.nextCursor, null);
+  assert.equal((await request({ ...oldest, before: first.nextCursor })).status, 400);
 
   const wages = await json({ view: "transactions", month: "2025-01", category: "工资" });
   assert.equal(wages.total, 1);

@@ -1,12 +1,13 @@
 const monthlyBills = "FROM bills WHERE user_id = ? AND strftime('%Y-%m', date) = ?";
-const categoryName = "COALESCE(NULLIF(trim(category), ''), '未分类')";
-const income = "(lower(type) = 'income' OR type = '收入')";
-const expense = "(lower(type) = 'expense' OR type = '支出')";
+export const categoryName = "COALESCE(NULLIF(trim(category), ''), '未分类')";
+export const income = "(lower(type) = 'income' OR type = '收入')";
+export const expense = "(lower(type) = 'expense' OR type = '支出')";
+export const defaultBudget = 5000;
 const amountRank = "abs(coalesce(amount_cny, 0))";
 const pageSize = 50;
 
 export function validMonth(month) {
-  return month.length === 7 && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  return typeof month === "string" && month.length === 7 && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
 }
 
 export async function readAvailableMonths(db, userId) {
@@ -30,7 +31,7 @@ export async function readDashboardMonth(db, userId, month) {
     db.prepare(`SELECT DISTINCT ${categoryName} AS category ${monthlyBills} ORDER BY category`).bind(userId, month),
   ]);
   const selectedMonth = annual.results.find((entry) => entry.month === month.slice(5));
-  const limit = settings.results[0]?.budget_limit ?? 5000;
+  const limit = settings.results[0]?.budget_limit ?? defaultBudget;
   const current = selectedMonth?.exp ?? 0;
 
   const pie = [];
@@ -52,8 +53,9 @@ export async function readDashboardMonth(db, userId, month) {
 export function readTransactionCursor(cursor, month, sort) {
   if (!cursor) return null;
   const byAmount = sort === "amount";
+  const ascending = sort === "date_asc";
   const parts = cursor.split("|");
-  if (parts.length !== (byAmount ? 3 : 2)) return undefined;
+  if (parts.length !== (byAmount || ascending ? 3 : 2) || (ascending && parts[0] !== "asc")) return undefined;
   const match = /^([0-9]{4}-[0-9]{2}-[0-9]{2}[^|]{0,24})\|(-?\d+)$/.exec(parts.slice(-2).join("|"));
   if (!match || !match[1].startsWith(month) || !Number.isSafeInteger(Number(match[2]))) return undefined;
   const position = [match[1], Number(match[2])];
@@ -68,8 +70,9 @@ export async function readMonthlyTransactions(db, userId, month, { category, typ
   if (type) filter += ` AND ${type === "income" ? income : expense}`;
   const params = category === null ? [userId, month] : [userId, month, category];
   const byAmount = sort === "amount";
-  const order = byAmount ? `${amountRank} DESC, date DESC, id DESC` : "date DESC, id DESC";
-  const cut = byAmount ? `(${amountRank}, date, id) < (?, ?, ?)` : "(date, id) < (?, ?)";
+  const ascending = sort === "date_asc";
+  const order = byAmount ? `${amountRank} DESC, date DESC, id DESC` : ascending ? "date ASC, id ASC" : "date DESC, id DESC";
+  const cut = byAmount ? `(${amountRank}, date, id) < (?, ?, ?)` : `(date, id) ${ascending ? ">" : "<"} (?, ?)`;
   const window = cursor ? `${filter} AND ${cut}` : filter;
   const [count, page] = await db.batch([
     db.prepare(`SELECT COUNT(*) AS total ${filter}`).bind(...params),
@@ -78,8 +81,8 @@ export async function readMonthlyTransactions(db, userId, month, { category, typ
   ]);
   const rows = page.results.slice(0, pageSize);
   const last = rows.at(-1);
-  const nextCursor = page.results.length > pageSize
-    ? `${byAmount ? `${Math.abs(last.amount_cny ?? 0)}|` : ""}${last.date}|${last.id}`
-    : null;
-  return { rows, total: count.results[0].total, nextCursor };
+  const total = count.results[0].total;
+  if (page.results.length <= pageSize) return { rows, total, nextCursor: null };
+  const prefix = byAmount ? `${Math.abs(last.amount_cny ?? 0)}|` : ascending ? "asc|" : "";
+  return { rows, total, nextCursor: `${prefix}${last.date}|${last.id}` };
 }

@@ -25,6 +25,9 @@ test("reads Excel amounts, dates and currencies without parsing summary rows", (
     assert.deepEqual(readStatement(workbookBytes(rows, format)).items, [{ date: "2026-11-21", amount: 133, type: "expense", currency: "HKD", category: "其他", description: "测试咖啡" }]);
   }
   assert.equal(readStatement(workbookBytes([["date", "credit"], [46346, 100]])).items[0].type, "income");
+  const distantYears = ["2024-02-29", "2028-12-31"];
+  const ranges = workbookBytes([rows[0], ...distantYears.map((date) => [date, 10, "收入", "CNY"])]);
+  assert.deepEqual(readStatement(ranges).items.map(({ date }) => date), distantYears);
   assert.throws(() => readStatement(workbookBytes([["日期", "金额"], ["2026-11-21", 133]])), /第 2 行/);
 });
 
