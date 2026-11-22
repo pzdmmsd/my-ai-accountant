@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { utils, write } from "xlsx";
+import { utils as codepage } from "xlsx/dist/cpexcel";
 import worker from "./index.js";
 import { model } from "./nvidia.js";
-import { readWorkbook } from "./workbook.js";
+import { readStatement } from "./workbook.js";
 
 const rows = [["日期", "金额", "收支类型", "币种", "备注"], ["2026-11-21", 133, "支出", "HKD", "测试咖啡"], ["合计", 133]];
 
@@ -17,10 +18,38 @@ function workbookBytes(values, bookType = "xlsx") {
 
 test("reads Excel amounts, dates and currencies without parsing summary rows", () => {
   for (const format of ["xlsx", "xls"]) {
-    assert.deepEqual(readWorkbook(workbookBytes(rows, format)), [{ date: "2026-11-21", amount: 133, type: "expense", currency: "HKD", category: "其他", description: "测试咖啡" }]);
+    assert.deepEqual(readStatement(workbookBytes(rows, format)).items, [{ date: "2026-11-21", amount: 133, type: "expense", currency: "HKD", category: "其他", description: "测试咖啡" }]);
   }
-  assert.equal(readWorkbook(workbookBytes([["date", "credit"], [46346, 100]]))[0].type, "income");
-  assert.throws(() => readWorkbook(workbookBytes([["日期", "金额"], ["2026-11-21", 133]])), /第 2 行/);
+  assert.equal(readStatement(workbookBytes([["date", "credit"], [46346, 100]])).items[0].type, "income");
+  assert.throws(() => readStatement(workbookBytes([["日期", "金额"], ["2026-11-21", 133]])), /第 2 行/);
+});
+
+test("reads native WeChat Excel and Alipay CSV exports through their preambles", () => {
+  const wechat = [
+    ...Array.from({ length: 25 }, () => ["微信支付账单说明"]),
+    ["交易时间", "交易类型", "交易对方", "商品", "收/支", "金额(元)", "支付方式", "当前状态", "交易单号", "商户单号", "备注"],
+    ["2026-11-21 10:30:00", "商户消费", "便利店", "咖啡", "支出", "￥18.50", "零钱", "支付成功"],
+    ["2026-11-21 10:31:00", "零钱充值", "系统", "充值", "/", "￥200.00", "银行卡", "充值成功"],
+    ["2026-11-21 10:32:00", "商户消费", "超市", "食品", "支出", "￥12.00", "零钱", "已全额退款"],
+  ];
+  assert.deepEqual(readStatement(workbookBytes(wechat)), { items: [
+    { date: "2026-11-21", amount: 18.5, type: "expense", currency: "CNY", category: "商户消费", description: "便利店 · 咖啡" },
+  ], skipped: 2 });
+
+  const alipay = [
+    "支付宝交易明细",
+    "账号信息：测试账号",
+    "----------------------交易明细列表----------------------",
+    "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注",
+    '2026-11-21 14:05:00,餐饮美食,测试餐厅,测试账号,"午餐, 套餐",支出,58.60,余额,交易成功,0001,0002,',
+    "2026-11-21 14:05:00,其他,测试商户,测试账号,测试,支出,29.2,余额,交易关闭,0003,0004,",
+    "----------------------交易明细列表结束----------------------",
+  ].join("\r\n");
+  for (const bytes of [new TextEncoder().encode(`\uFEFF${alipay}`), Uint8Array.from(codepage.encode(936, alipay))]) {
+    assert.deepEqual(readStatement(bytes), { items: [
+      { date: "2026-11-21", amount: 58.6, type: "expense", currency: "CNY", category: "餐饮美食", description: "测试餐厅 · 午餐, 套餐" },
+    ], skipped: 1 });
+  }
 });
 
 test("queues a JPEG document and imports an Excel attachment exactly once", async (t) => {
@@ -73,4 +102,5 @@ test("queues a JPEG document and imports an Excel attachment exactly once", asyn
   assert.deepEqual(sqlite.prepare("SELECT amount_original, currency_original, amount_cny FROM bills ORDER BY amount_original").all().map((row) => Object.values(row)), [[12, "CNY", 12], [133, "HKD", 119.7]]);
   assert.equal(notices.length, 2);
   assert.match(notices[1], /已记录 1 笔/);
+  assert.ok(notices.every(notice => !/\p{Extended_Pictographic}/u.test(notice)));
 });

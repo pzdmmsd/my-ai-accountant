@@ -12,6 +12,7 @@ test("extracts text transactions using NVIDIA NIM and normalizes fields", async 
     assert.equal(options.headers.Authorization, "Bearer test-key")
     const body = JSON.parse(options.body)
     assert.equal(body.model, model)
+    assert.equal(body.response_format.type, "json_schema")
     assert.equal(body.stream, false)
     assert.deepEqual(body.messages[1], { role: "user", content: "午餐 28.5 元" })
     return completion(`\`\`\`json\n${JSON.stringify([entry])}\n\`\`\``)
@@ -38,4 +39,18 @@ test("rejects invalid transactions and reports upstream error status", async (t)
   await assert.rejects(extractTransactions({ ...context, text: "测试" }), /Invalid transaction/)
   fetch.mock.mockImplementation(async () => new Response("{}", { status: 429 }))
   await assert.rejects(extractTransactions({ ...context, text: "测试" }), /HTTP 429/)
+})
+
+test("recovers a screenshot when the first model produces an invalid row", async (t) => {
+  const calls = []
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    const body = JSON.parse(options.body)
+    calls.push(body.model)
+    if (body.model === model) return completion(JSON.stringify({ transactions: [{ ...entry, date: "2026-11-31" }] }))
+    return completion(JSON.stringify({ transactions: [{ ...entry, currency: "HKD", date: "2026-11-21" }] }))
+  })
+  const result = await extractTransactions({ ...context, image: "data:image/jpeg;base64,AA==" })
+  assert.deepEqual(calls, [model, "moonshotai/kimi-k3.1-pro"])
+  assert.equal(result[0].currency, "HKD")
+  assert.equal(result[0].date, "2026-11-21")
 })
