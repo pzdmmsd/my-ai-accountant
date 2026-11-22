@@ -44,14 +44,7 @@ export async function extractTransactions({ key, date, text, image }) {
 
 async function recognize({ key, date, content, image, selected }) {
   const primary = selected === model
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
+  const result = await completeNvidia(key, {
       model: selected,
       messages: [
         {
@@ -63,22 +56,9 @@ async function recognize({ key, date, content, image, selected }) {
       ...(primary ? { chat_template_kwargs: { enable_thinking: false }, response_format: responseFormat } : { reasoning_effort: "low" }),
       temperature: 0.1,
       max_tokens: image ? 8192 : 4096,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(75000),
-  })
-  if (response.status !== 200) throw new RecognitionError("upstream_http", `NVIDIA NIM returned HTTP ${response.status}`, response.status)
-
-  let envelope
-  try { envelope = await response.json() }
-  catch { throw new RecognitionError("invalid_json", "Invalid NVIDIA NIM response") }
-  const { choices } = envelope ?? {}
-  const choice = choices?.[0]
-  if (choice?.finish_reason === "length") throw new RecognitionError("truncated", "Incomplete NVIDIA NIM response")
-  if (typeof choice?.message?.content !== "string" || !choice.message.content.trim()) throw new RecognitionError("no_content", "Incomplete NVIDIA NIM response")
-  const json = choice.message.content.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1")
+  }, 75000)
   let parsed
-  try { parsed = JSON.parse(json) }
+  try { parsed = parseModelJson(result) }
   catch { throw new RecognitionError("invalid_json", "Invalid NVIDIA NIM JSON") }
   const transactions = Array.isArray(parsed) ? parsed : parsed?.transactions
   if (!Array.isArray(transactions) || transactions.length > 100) throw new RecognitionError("invalid_list", "Invalid transaction list")
@@ -101,4 +81,27 @@ async function recognize({ key, date, content, image, selected }) {
       description: String(item.desc || "").trim().slice(0, 140),
     }
   })
+}
+
+export function parseModelJson(text) {
+  return JSON.parse(text.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1"))
+}
+
+export async function completeNvidia(key, body, timeout) {
+  if (!key) throw new RecognitionError("missing_key", "NVIDIA_API_KEY is missing")
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ model, ...body, stream: false }),
+    signal: AbortSignal.timeout(timeout),
+  })
+  if (response.status !== 200) throw new RecognitionError("upstream_http", `NVIDIA NIM returned HTTP ${response.status}`, response.status)
+
+  let envelope
+  try { envelope = await response.json() }
+  catch { throw new RecognitionError("invalid_json", "Invalid NVIDIA NIM response") }
+  const choice = envelope?.choices?.[0]
+  if (choice?.finish_reason === "length") throw new RecognitionError("truncated", "Incomplete NVIDIA NIM response")
+  if (typeof choice?.message?.content !== "string" || !choice.message.content.trim()) throw new RecognitionError("no_content", "Incomplete NVIDIA NIM response")
+  return choice.message.content.trim()
 }

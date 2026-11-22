@@ -1,6 +1,8 @@
 import { extractTransactions } from "./nvidia.js";
 import { ImportError, readStatement } from "./workbook.js";
 import { readAvailableMonths, readDashboardMonth, readMonthlyTransactions, readTransactionCursor, validMonth } from "./dashboard.js";
+import { dashboardLink } from "./dashboard-session.js";
+import { handleLedgerQuestion } from "./ledger-questions.js";
 
 const dashboardHeaders = { "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" };
 
@@ -11,6 +13,7 @@ function accountingDate(timestamp = Date.now()) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/ask") return handleLedgerQuestion(request, env, accountingDate());
 
     // --- 1. 前端 API 接口 (供网页调用) ---
     if (url.pathname === "/api/data") {
@@ -40,7 +43,7 @@ export default {
           if (view === "month") return Response.json(await readDashboardMonth(env.DB, userId, targetMonth), { headers: dashboardHeaders });
           const type = url.searchParams.get("type");
           const sort = url.searchParams.get("sort") ?? "date";
-          if ((type !== null && type !== "income" && type !== "expense") || (sort !== "date" && sort !== "amount")) {
+          if ((type !== null && type !== "income" && type !== "expense") || !["date", "date_asc", "amount"].includes(sort)) {
             return Response.json({ error: "Invalid transaction filter or sort" }, { status: 400, headers: dashboardHeaders });
           }
           const cursor = readTransactionCursor(url.searchParams.get("before"), targetMonth, sort);
@@ -259,7 +262,7 @@ async function handleAccounting({ updateId, chatId: userId, text, file, date }, 
     }).join("\n\n");
     const heading = `已记录 ${items.length} 笔收支${skipped ? `，略过 ${skipped} 笔` : ""}。${items.length > 10 ? "以下显示前 10 笔。" : ""}`;
     stage = "reply";
-    await editMessage(userId, botMsgId, `${heading}\n\n${summary}\n\n[查看财务看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env, botMsgId);
+    await editMessage(userId, botMsgId, `${heading}\n\n${summary}\n\n[查看财务看板](${await dashboardLink(userId, env.TG_TOKEN)})`, env, botMsgId);
   } catch (e) {
     console.error("Accounting request failed", { stage, error: e.name, reason: e.code, status: e.status });
     const message = e instanceof ImportError ? e.message : stage === "reply" ? "账单已记录，请用 /list 查看。" : stage === "nvidia" && file ? "这张图片未能生成可入账的明细。可以裁成几张清晰的截图再发送。" : stage === "nvidia" ? "暂时无法识别这条消息，本次未入账。" : stage === "exchange" ? "暂时无法获取汇率，本次未入账。请稍后重试。" : "暂时无法完成记账，请稍后重试。";
@@ -278,11 +281,11 @@ async function handleSetBudget(userId, text, env) {
 }
 
 async function handleStart(userId, env) {
-  await sendMessage(userId, `发送文字、账单照片、Excel 或 CSV 流水即可记账。微信和支付宝导出的账单请先解压。\n\n[打开财务看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env);
+  await sendMessage(userId, `发送文字、账单照片、Excel 或 CSV 流水即可记账。微信和支付宝导出的账单请先解压。\n\n[打开财务看板](${await dashboardLink(userId, env.TG_TOKEN)})`, env);
 }
 
 async function handleHelp(userId, env) {
-  await sendMessage(userId, `/budget 8000 设置预算\n金额：100 修改最近一笔金额\n备注：内容 修改最近一笔备注\n/list 查看最近明细`, env);
+  await sendMessage(userId, `/start 打开看板和 AI 问答\n/budget 8000 设置预算\n金额：100 修改最近一笔金额\n备注：内容 修改最近一笔备注\n/list 查看最近明细`, env);
 }
 
 async function handleListQuery(userId, env) {
@@ -305,7 +308,7 @@ async function handleListQuery(userId, env) {
     included++;
   }
   if (included < results.length) txt += `\n另有 ${results.length - included} 笔未在这条消息中展开。\n`;
-  await sendMessage(userId, `${txt}\n[查看财务看板](https://money.pzdmmsd.qzz.io/?user_id=${userId})`, env);
+  await sendMessage(userId, `${txt}\n[查看财务看板](${await dashboardLink(userId, env.TG_TOKEN)})`, env);
 }
 
 async function handleUpdateAmount(userId, text, env) {

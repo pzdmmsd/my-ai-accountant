@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react"
-import { Activity, ArrowDownLeft, ArrowRight, ArrowUpRight, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, LayoutDashboard, List, Menu, Moon, PieChart, RefreshCw, Sun, Wallet, type LucideIcon } from "lucide-react"
+import { Activity, ArrowDownLeft, ArrowRight, ArrowUpRight, Bot, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, LayoutDashboard, List, Menu, Moon, PieChart, RefreshCw, Sun, Wallet, type LucideIcon } from "lucide-react"
 import type { Series } from "@/components/ledger-charts"
+import { LedgerQuestions } from "@/components/ledger-questions"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ const navigation = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
   { id: "cash-flow", label: "年度收支", icon: ChartNoAxesColumnIncreasing },
   { id: "spending", label: "收支构成", icon: PieChart },
+  { id: "ask-ledger", label: "AI 账单问答", icon: Bot },
   { id: "transactions", label: "账单明细", icon: List },
 ]
 
@@ -90,8 +92,7 @@ function LoadingDashboard() {
   </div>
 }
 
-export function App() {
-  const userId = new URLSearchParams(window.location.search).get("user_id")?.trim() || ""
+export function App({ userId, askToken }: { userId: string; askToken: string }) {
   const thisMonth = currentMonth()
   const [refresh, setRefresh] = useState(0)
   const [month, setMonth] = useState(thisMonth)
@@ -197,19 +198,19 @@ export function App() {
           <h2>从 Telegram 打开你的账本</h2>
           <p>在记账机器人中发送 <code>/start</code>，然后点击消息中的看板链接。</p>
         </CardContent></Card>}
-        {ledger.loading && <LoadingDashboard />}
-        {ledger.failed && <Alert variant="destructive" className="dashboard-error"><CircleAlert /><AlertTitle>账本暂时加载失败</AlertTitle><AlertDescription>请检查网络连接，或尝试刷新账本。</AlertDescription><Button variant="outline" size="sm" onClick={refreshData}>重新加载</Button></Alert>}
-
-        {data && budget && <div className="dashboard-content">
-          <section className="metric-grid" aria-label="本月收支摘要">
+        {userId && <div className="dashboard-content">
+          {ledger.loading && <LoadingDashboard />}
+          {ledger.failed && <Alert variant="destructive" className="dashboard-error"><CircleAlert /><AlertTitle>账本暂时加载失败</AlertTitle><AlertDescription>请检查网络连接，或尝试刷新账本。</AlertDescription><Button variant="outline" size="sm" onClick={refreshData}>重新加载</Button></Alert>}
+          {data && budget && <section className="metric-grid" aria-label="本月收支摘要">
             <Metric label="本月收入" value={money(income)} detail="收入合计 · CNY" icon={ArrowDownLeft} tone="green" />
             <Metric label="本月支出" value={money(expense)} detail="支出合计 · CNY" icon={ArrowUpRight} tone="blue" />
             <Metric label="本月结余" value={money(income - expense)} detail="收入减去支出" icon={Wallet} tone="purple" />
             <Metric label="预算进度" value={budget.limit > 0 ? `${utilization}%` : "—"} detail={budgetDetail} icon={Activity} tone={overBudget ? "red" : "amber"}>
               {budget.limit > 0 && <Progress value={Math.max(0, Math.min(utilization, 100))} className={cn("budget-progress", overBudget && "budget-over")} aria-label="本月净支出占预算比例" aria-valuetext={`${utilization}%`} />}
             </Metric>
-          </section>
-
+          </section>}
+          <LedgerQuestions token={askToken} month={month} />
+          {data && <>
           <div className="chart-grid">
             <Card id="cash-flow" className="dashboard-card chart-card">
               <CardHeader className="panel-header">
@@ -258,10 +259,11 @@ export function App() {
                     {data.categories.map((value) => <SelectItem key={value} value={`category:${value}`}>{value}</SelectItem>)}
                   </SelectContent>
                 </Select>}
-                <Select value={sort} onValueChange={(value) => selectSort(value === "amount" ? "amount" : "date")}>
+                <Select value={sort} onValueChange={(value) => selectSort(value === "amount" || value === "date_asc" ? value : "date")}>
                   <SelectTrigger size="sm" aria-label="账单排序"><SelectValue /></SelectTrigger>
                   <SelectContent position="popper" align="end">
                     <SelectItem value="date">日期从近到远</SelectItem>
+                    <SelectItem value="date_asc">日期从远到近</SelectItem>
                     <SelectItem value="amount">金额从大到小</SelectItem>
                   </SelectContent>
                 </Select>
@@ -276,6 +278,7 @@ export function App() {
               </div>}
             </CardContent>
           </Card>
+          </>}
         </div>}
       </main>
       {data && <footer className="workspace-footer"><span>My AI Accountant</span><a href="#overview">返回概览 <ArrowRight size={14} /></a></footer>}

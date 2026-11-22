@@ -28,6 +28,8 @@ npm run build --prefix worker
 
 网页使用 Telegram 链接中的 `user_id`。本地开发时可用 `VITE_API_BASE_URL` 指向测试接口。
 
+在 Telegram 发送 `/start` 并使用新链接打开看板即可使用 AI 账单问答。问答默认用所选月份，也支持在问题中指定日期范围。Worker 仅从链接对应的账本读取数据，并将问题和本次查询所需的结果交给 NVIDIA NIM。链接的问答权限有效期为 7 天。
+
 ## 部署
 
 - Cloudflare Pages 项目 `my-ai-accountant` 从 `main` 构建仓库根目录，构建命令为 `npm run build`，产物目录为 `dist`。拉取请求可在 Pages 预览页面查看改动。
