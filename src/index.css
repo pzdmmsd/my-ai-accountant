@@ -124,8 +124,8 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .page-heading h1 { font-size: clamp(27px, 3vw, 34px); font-weight: 750; line-height: 1.2; letter-spacing: -.04em; }
 .page-heading p { margin-top: 7px; color: var(--muted-foreground); }
 .heading-actions { display: flex; align-items: center; gap: 8px; }
-.period-badge { height: 36px; padding-inline: 11px; gap: 7px; border-radius: 8px; background: var(--card); color: var(--foreground); font-size: 12px; font-weight: 550; }
-.period-badge svg { color: var(--muted-foreground); }
+.heading-actions .period-select { gap: 8px; color: var(--foreground); font-weight: 650; }
+.period-select svg { color: var(--muted-foreground); }
 .heading-actions button { background: var(--card); color: var(--muted-foreground); }
 
 .dashboard-content { display: grid; gap: 19px; }
@@ -183,6 +183,8 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .panel-empty { display: grid; min-height: 125px; place-content: center; justify-items: center; gap: 9px; color: var(--muted-foreground); text-align: center; font-size: 12px; }
 .transactions-card [data-slot="table-head"] { color: var(--muted-foreground); font-size: 12px; font-weight: 590; }
 .transactions-card [data-slot="table-cell"] { min-height: 46px; padding-block: 12px; }
+.transaction-category { display: block; overflow: hidden; color: var(--muted-foreground); font-size: 11px; font-weight: 500; text-overflow: ellipsis; }
+.transaction-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 16px; color: var(--muted-foreground); font-size: 12px; }
 .transaction-description { font-weight: 620; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
 .transaction-date { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .transaction-amount { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }

@@ -1,5 +1,6 @@
 import { extractTransactions } from "./nvidia.js";
 import { ImportError, readStatement } from "./workbook.js";
+import { readAvailableMonths, readDashboardMonth, readMonthlyTransactions, readTransactionCursor, validMonth } from "./dashboard.js";
 
 const dashboardHeaders = { "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" };
 
@@ -30,6 +31,18 @@ export default {
       if (!userId) return Response.json({ error: "Missing user_id" }, { status: 400, headers: dashboardHeaders });
 
       try {
+        const view = url.searchParams.get("view");
+        if (view === "months") {
+          return Response.json(await readAvailableMonths(env.DB, userId), { headers: dashboardHeaders });
+        }
+        if (view === "month" || view === "transactions") {
+          if (!targetMonth || !validMonth(targetMonth)) return Response.json({ error: "Expected month in YYYY-MM format" }, { status: 400, headers: dashboardHeaders });
+          if (view === "month") return Response.json(await readDashboardMonth(env.DB, userId, targetMonth), { headers: dashboardHeaders });
+          const cursor = readTransactionCursor(url.searchParams.get("before"), targetMonth);
+          if (cursor === undefined) return Response.json({ error: "Invalid transaction cursor" }, { status: 400, headers: dashboardHeaders });
+          return Response.json(await readMonthlyTransactions(env.DB, userId, targetMonth, category, cursor), { headers: dashboardHeaders });
+        }
+
         // A. 分类明细
         if (category) {
           const details = await env.DB.prepare("SELECT * FROM bills WHERE user_id = ? AND category = ? ORDER BY date DESC LIMIT 50").bind(userId, category).all();
