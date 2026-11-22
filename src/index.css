@@ -164,11 +164,15 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .cash-flow-chart { height: 242px; }
 .trend-chart { height: 185px; }
 .chart-placeholder { min-height: 146px; margin-top: 5px; }
-.donut-wrap { position: relative; width: min(142px, 100%); margin: 1px auto 8px; }
+.donut-wrap { position: relative; margin: 1px 0 8px; }
 .donut-chart { width: 100%; height: 142px; }
 .donut-center { position: absolute; top: 50%; left: 50%; display: grid; max-width: 92px; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
 .donut-center span { color: var(--muted-foreground); font-size: 10px; }
 .donut-center strong { overflow: hidden; font-size: 14px; font-weight: 740; white-space: nowrap; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.expense-tooltip { width: max-content; max-width: min(208px, 100%); padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); box-shadow: 0 6px 20px #10162630; font-size: 12px; }
+.expense-tooltip-name { overflow-wrap: anywhere; }
+.expense-tooltip-value { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.expense-tooltip-value span { color: var(--muted-foreground); }
 .category-legend { display: grid; gap: 2px; max-height: 133px; overflow: auto; }
 .category-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 36px; align-items: center; gap: 9px; width: 100%; min-height: 27px; padding: 2px 6px; border-radius: 6px; text-align: left; color: var(--muted-foreground); font-size: 12px; }
 .category-row:hover, .category-row.is-selected { background: var(--muted); color: var(--foreground); }

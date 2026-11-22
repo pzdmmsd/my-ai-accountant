@@ -1,9 +1,9 @@
 import { read, SSF, utils } from "xlsx";
 import { utils as codepage } from "xlsx/dist/cpexcel";
 
-export const maxWorkbookEntries = 200;
+export const maxWorkbookEntries = 1000;
 const headerRows = 60;
-const scanRows = maxWorkbookEntries + headerRows + 25;
+const scanRows = maxWorkbookEntries * 3 + headerRows;
 const aliases = {
   date: ["日期", "交易日期", "交易时间", "记账日期", "入账日期", "时间", "date", "transactiondate", "datetime", "posteddate"],
   amount: ["金额", "金额(元)", "交易金额", "交易金额(元)", "原币金额", "收支金额", "amount", "transactionamount", "originalamount"],
@@ -109,8 +109,8 @@ export function readStatement(bytes) {
     const rows = utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
     const headerIndex = rows.slice(0, headerRows).findIndex(headerColumns);
     if (headerIndex === -1) continue;
-    if (sheet["!fullref"] && utils.decode_range(sheet["!fullref"]).e.r > utils.decode_range(sheet["!ref"]).e.r) {
-      throw new ImportError(`每个文件最多导入 ${maxWorkbookEntries} 笔，请把流水拆成较小的文件。`);
+    if (rows.length >= scanRows || (sheet["!fullref"] && utils.decode_range(sheet["!fullref"]).e.r > utils.decode_range(sheet["!ref"]).e.r)) {
+      throw new ImportError(`账单行数过多，请拆分文件。每个文件最多导入 ${maxWorkbookEntries} 笔。`);
     }
     const columns = headerColumns(rows[headerIndex]);
     const data = rows.slice(headerIndex + 1);

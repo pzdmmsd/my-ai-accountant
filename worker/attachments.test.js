@@ -10,6 +10,10 @@ import { readStatement } from "./workbook.js";
 
 const rows = [["日期", "金额", "收支类型", "币种", "备注"], ["2026-11-21", 133, "支出", "HKD", "测试咖啡"], ["合计", 133]];
 
+function statementRows(count) {
+  return [rows[0], ...Array.from({ length: count }, (_, i) => ["2026-11-21", 133 + i, "支出", "HKD", `测试账单 ${i + 1}`])];
+}
+
 function workbookBytes(values, bookType = "xlsx") {
   const workbook = utils.book_new();
   utils.book_append_sheet(workbook, utils.aoa_to_sheet(values), "账单");
@@ -52,7 +56,15 @@ test("reads native WeChat Excel and Alipay CSV exports through their preambles",
   }
 });
 
-test("queues a JPEG document and imports an Excel attachment exactly once", async (t) => {
+test("rejects more than 1,000 entries in XLSX or CSV", () => {
+  const input = statementRows(1001);
+  const csv = new TextEncoder().encode(input.map(row => row.join(",")).join("\n"));
+  for (const bytes of [workbookBytes(input), csv]) {
+    assert.throws(() => readStatement(bytes), /最多导入 1000 笔/);
+  }
+});
+
+test("queues a JPEG document and imports 1,000 Excel entries exactly once", async (t) => {
   const sqlite = new DatabaseSync(":memory:");
   t.after(() => sqlite.close());
   sqlite.exec(`CREATE TABLE bills (user_id, message_id, amount_original, currency_original, amount_cny, type, category, description, date);`);
@@ -79,7 +91,7 @@ test("queues a JPEG document and imports an Excel attachment exactly once", asyn
     if (url.includes("/editMessageText")) { notices.push(JSON.parse(options.body).text); return Response.json({ ok: true }); }
     if (url.includes("/getFile")) return Response.json({ ok: true, result: { file_path: new URL(url).searchParams.get("file_id") } });
     if (url.endsWith("bill.jpg")) return new Response(Uint8Array.of(255, 216, 255, 217));
-    if (url.endsWith("bill.xlsx")) return new Response(workbookBytes(rows));
+    if (url.endsWith("bill.xlsx")) return new Response(workbookBytes(statementRows(1000)));
     if (url.includes("api.nvidia.com")) {
       modelCalls++;
       const body = JSON.parse(options.body);
@@ -99,8 +111,9 @@ test("queues a JPEG document and imports an Excel attachment exactly once", asyn
   assert.deepEqual(pending.map(({ file }) => file.kind), ["image", "workbook"]);
   for (const body of [...pending, pending[1]]) await worker.queue({ messages: [{ body, ack() {} }] }, env);
   assert.equal(modelCalls, 1);
-  assert.deepEqual(sqlite.prepare("SELECT amount_original, currency_original, amount_cny FROM bills ORDER BY amount_original").all().map((row) => Object.values(row)), [[12, "CNY", 12], [133, "HKD", 119.7]]);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM bills").get().count, 1001);
+  assert.deepEqual(sqlite.prepare("SELECT amount_original, currency_original, amount_cny FROM bills ORDER BY rowid DESC LIMIT 1").all().map((row) => Object.values(row)), [[1132, "HKD", 1018.8]]);
   assert.equal(notices.length, 2);
-  assert.match(notices[1], /已记录 1 笔/);
+  assert.match(notices[1], /已记录 1000 笔/);
   assert.ok(notices.every(notice => !/\p{Extended_Pictographic}/u.test(notice)));
 });

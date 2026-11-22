@@ -1,4 +1,4 @@
-import { Cell, Pie, PieChart, Bar, BarChart, Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Cell, Pie, PieChart, Bar, BarChart, Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts"
 import { cn } from "@/lib/utils"
 import { compactAmount, money, type Category, type DailyExpense, type YearMonth } from "@/lib/ledger"
 
@@ -41,7 +41,7 @@ export function ExpensesChart({ categories, selected, onSelect }: { categories: 
             <Pie data={categories} dataKey="value" nameKey="category" innerRadius="73%" outerRadius="97%" paddingAngle={3} stroke="none" startAngle={90} endAngle={-270} isAnimationActive={false} onClick={(_, index) => onSelect(categories[index].category)}>
               {categories.map((item, index) => <Cell key={item.category} fill={categoryColors[index % categoryColors.length]} className="cursor-pointer outline-none" />)}
             </Pie>
-            <Tooltip formatter={(value: number) => money(value)} contentStyle={tooltipStyle} />
+            <Tooltip<number, string> content={(props) => <ExpenseTooltip {...props} total={total} />} wrapperStyle={{ zIndex: 2, maxWidth: "100%" }} isAnimationActive={false} />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -59,6 +59,16 @@ export function ExpensesChart({ categories, selected, onSelect }: { categories: 
       ))}
     </ul>
   </>
+}
+
+function ExpenseTooltip({ active, payload, total }: Pick<TooltipProps<number, string>, "active" | "payload"> & { total: number }) {
+  const entry = payload?.[0]
+  if (!active || typeof entry?.value !== "number") return null
+
+  return <div className="expense-tooltip" role="tooltip">
+    <div className="expense-tooltip-name">{entry.name}</div>
+    <div className="expense-tooltip-value"><strong>{money(entry.value)}</strong><span>{Math.round(entry.value / total * 100)}%</span></div>
+  </div>
 }
 
 export function DailyChart({ data }: { data: DailyExpense[] }) {
