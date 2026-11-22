@@ -186,17 +186,17 @@ function imageDataUrl(bytes) {
 }
 
 async function saveAccountingUpdate(db, updateId, userId, botMsgId, transactions) {
-  const statements = [];
-  for (let index = 0; index < transactions.length; index += 10) {
-    const rows = transactions.slice(index, index + 10);
-    const values = rows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
-    const parameters = rows.flatMap(({ amount, currency, cny, type, category, description, date }) => [userId, botMsgId, amount, currency, cny, type, category, description, date]);
-    statements.push(db.prepare(`INSERT INTO bills (user_id, message_id, amount_original, currency_original, amount_cny, type, category, description, date)
-      SELECT * FROM (VALUES ${values}) WHERE NOT EXISTS (SELECT 1 FROM accounting_updates WHERE update_id = ?)`)
-      .bind(...parameters, updateId));
-  }
-  statements.push(db.prepare("INSERT OR IGNORE INTO accounting_updates (update_id) VALUES (?)").bind(updateId));
-  await db.batch(statements);
+  await db.batch([
+    db.prepare(`INSERT INTO bills (user_id, message_id, amount_original, currency_original, amount_cny, type, category, description, date)
+      SELECT ?, ?, json_extract(entry.value, '$.amount'), json_extract(entry.value, '$.currency'),
+        json_extract(entry.value, '$.cny'), json_extract(entry.value, '$.type'), json_extract(entry.value, '$.category'),
+        json_extract(entry.value, '$.description'), json_extract(entry.value, '$.date')
+      FROM json_each(?) AS entry
+      WHERE NOT EXISTS (SELECT 1 FROM accounting_updates WHERE update_id = ?)
+      ORDER BY CAST(entry.key AS INTEGER)`)
+      .bind(userId, botMsgId, JSON.stringify(transactions), updateId),
+    db.prepare("INSERT OR IGNORE INTO accounting_updates (update_id) VALUES (?)").bind(updateId),
+  ]);
 }
 
 async function handleAccounting({ updateId, chatId: userId, text, file, date }, env) {
