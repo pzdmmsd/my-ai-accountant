@@ -10,17 +10,17 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { currentMonth, ledgerRequest, money, monthLabel, originalAmount, type Dashboard, type Transaction, type TransactionPage } from "@/lib/ledger"
+import { currentMonth, ledgerRequest, money, monthLabel, originalAmount, type Dashboard, type Transaction, type TransactionPage, type TransactionSort, type TransactionType } from "@/lib/ledger"
 import { cn } from "@/lib/utils"
 
 const CashFlowChart = lazy(() => import("@/components/ledger-charts").then(({ CashFlowChart }) => ({ default: CashFlowChart })))
 const DailyChart = lazy(() => import("@/components/ledger-charts").then(({ DailyChart }) => ({ default: DailyChart })))
-const ExpensesChart = lazy(() => import("@/components/ledger-charts").then(({ ExpensesChart }) => ({ default: ExpensesChart })))
+const CategoryChart = lazy(() => import("@/components/ledger-charts").then(({ CategoryChart }) => ({ default: CategoryChart })))
 
 const navigation = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
   { id: "cash-flow", label: "年度收支", icon: ChartNoAxesColumnIncreasing },
-  { id: "spending", label: "支出分析", icon: PieChart },
+  { id: "spending", label: "收支构成", icon: PieChart },
   { id: "transactions", label: "账单明细", icon: List },
 ]
 
@@ -86,7 +86,7 @@ function EmptyPanel({ icon: Icon, children }: { icon: LucideIcon; children: Reac
 function LoadingDashboard() {
   return <div className="dashboard-content" aria-busy="true" aria-label="正在加载账本">
     <div className="metric-grid">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="loading-metric" />)}</div>
-    <div className="chart-grid"><Skeleton className="loading-chart" /><Skeleton className="loading-chart" /></div>
+    <div className="chart-grid"><Skeleton className="loading-chart" /><Skeleton className="loading-chart" /><Skeleton className="loading-chart" /></div>
   </div>
 }
 
@@ -96,6 +96,8 @@ export function App() {
   const [refresh, setRefresh] = useState(0)
   const [month, setMonth] = useState(thisMonth)
   const [category, setCategory] = useState("")
+  const [type, setType] = useState<TransactionType | "all">("all")
+  const [sort, setSort] = useState<TransactionSort>("date")
   const [pageCursors, setPageCursors] = useState<string[]>([])
   const [series, setSeries] = useState<Series>("both")
   const [section, setSection] = useState(window.location.hash.slice(1) || "overview")
@@ -119,18 +121,25 @@ export function App() {
   const available = useLedger<string[]>(userId, "view=months", refresh)
   const ledger = useLedger<Dashboard>(userId, new URLSearchParams({ view: "month", month }).toString(), refresh)
   const data = ledger.data
-  const categories = data?.pie.filter((item) => item.value > 0) ?? []
+  const composition = [
+    { id: "spending", kind: "expense", label: "支出", categories: data?.pie.filter((item) => item.value > 0) ?? [] },
+    { id: "income-composition", kind: "income", label: "收入", categories: data?.incomePie?.filter((item) => item.value > 0) ?? [] },
+  ] as const
   const before = pageCursors.at(-1)
-  const transactions = useLedger<TransactionPage>(userId, new URLSearchParams({ view: "transactions", month, ...(category ? { category } : {}), ...(before ? { before } : {}) }).toString(), refresh)
+  const transactions = useLedger<TransactionPage>(userId, new URLSearchParams({ view: "transactions", month, sort, ...(type !== "all" ? { type } : {}), ...(category ? { category } : {}), ...(before ? { before } : {}) }).toString(), refresh)
   const knownMonths = [thisMonth, month, ...(available.data ?? available.previousData ?? [])]
   const years = [...new Set(knownMonths.map((value) => value.slice(0, 4)))].sort().reverse()
   const latestMonth = knownMonths.reduce((latest, value) => value > latest ? value : latest, thisMonth)
   const income = data?.income ?? 0
   const expense = data?.budget.current ?? 0
   const budget = data?.budget
-  const utilization = budget && budget.limit > 0 ? Math.round(100 * budget.current / budget.limit) : 0
-  const budgetDetail = budget && budget.limit > 0 ? `${budget.isOver ? "超出" : "剩余"} ${money(Math.abs(budget.limit - budget.current))}${month === thisMonth ? "" : " · 按当前预算上限"}` : "在 Telegram 中设置预算"
+  const netExpense = expense - income
+  const overBudget = budget ? netExpense > budget.limit : false
+  const utilization = budget && budget.limit > 0 ? Math.round(100 * netExpense / budget.limit) : 0
+  const budgetDetail = budget && budget.limit > 0 ? `${overBudget ? "超出" : "剩余"} ${money(Math.abs(budget.limit - netExpense))}${month === thisMonth ? "" : " · 按当前预算上限"}` : "在 Telegram 中设置预算"
   const selectCategory = (value: string) => { setCategory(value); setPageCursors([]) }
+  const selectType = (value: TransactionType | "all") => { setType(value); setPageCursors([]) }
+  const selectSort = (value: TransactionSort) => { setSort(value); setPageCursors([]) }
   const selectMonth = (value: string) => { setMonth(value); selectCategory("") }
   const refreshData = () => { setPageCursors([]); setRefresh((version) => version + 1) }
   const transactionPage = transactions.data
@@ -196,8 +205,8 @@ export function App() {
             <Metric label="本月收入" value={money(income)} detail="收入合计 · CNY" icon={ArrowDownLeft} tone="green" />
             <Metric label="本月支出" value={money(expense)} detail="支出合计 · CNY" icon={ArrowUpRight} tone="blue" />
             <Metric label="本月结余" value={money(income - expense)} detail="收入减去支出" icon={Wallet} tone="purple" />
-            <Metric label="预算进度" value={budget.limit > 0 ? `${utilization}%` : "—"} detail={budgetDetail} icon={Activity} tone={budget.isOver ? "red" : "amber"}>
-              {budget.limit > 0 && <Progress value={Math.min(utilization, 100)} className={cn("budget-progress", budget.isOver && "budget-over")} aria-label="本月预算使用率" />}
+            <Metric label="预算进度" value={budget.limit > 0 ? `${utilization}%` : "—"} detail={budgetDetail} icon={Activity} tone={overBudget ? "red" : "amber"}>
+              {budget.limit > 0 && <Progress value={Math.max(0, Math.min(utilization, 100))} className={cn("budget-progress", overBudget && "budget-over")} aria-label="本月净支出占预算比例" aria-valuetext={`${utilization}%`} />}
             </Metric>
           </section>
 
@@ -215,14 +224,14 @@ export function App() {
               </CardContent>
             </Card>
 
-            <Card id="spending" className="dashboard-card chart-card">
+            {composition.map(({ id, kind, label, categories }) => <Card key={kind} id={id} className="dashboard-card chart-card">
               <CardHeader className="panel-header">
-                <div><CardTitle>支出构成</CardTitle><CardDescription>{monthLabel(month)} · 按分类统计</CardDescription></div>
+                <div><CardTitle>{label}构成</CardTitle><CardDescription>{monthLabel(month)} · 按分类统计</CardDescription></div>
               </CardHeader>
               <CardContent className="panel-content spending-content">
-                {categories.length ? <Suspense fallback={<Skeleton className="chart-placeholder" />}><ExpensesChart categories={categories} selected={category} onSelect={selectCategory} /></Suspense> : <EmptyPanel icon={PieChart}>该月暂无支出记录</EmptyPanel>}
+                {categories.length ? <Suspense fallback={<Skeleton className="chart-placeholder" />}><CategoryChart kind={kind} categories={categories} selected={type === kind ? category : ""} onSelect={(value) => { selectType(kind); selectCategory(value) }} /></Suspense> : <EmptyPanel icon={PieChart}>该月暂无{label}记录</EmptyPanel>}
               </CardContent>
-            </Card>
+            </Card>)}
           </div>
 
           <Card className="dashboard-card trend-card">
@@ -232,17 +241,34 @@ export function App() {
 
           <Card id="transactions" className="dashboard-card transactions-card">
             <CardHeader className="panel-header">
-              <div><CardTitle>账单明细</CardTitle><CardDescription>{monthLabel(month)}{transactionPage ? ` · ${category || "全部分类"} · 共 ${transactionPage.total} 笔` : ""}</CardDescription></div>
-              {data.categories.length > 0 && <Select value={category ? `category:${category}` : "all"} onValueChange={(value) => selectCategory(value === "all" ? "" : value.slice("category:".length))}>
-                <SelectTrigger size="sm" aria-label="账单分类"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper" align="end">
-                  <SelectItem value="all">全部分类</SelectItem>
-                  {data.categories.map((value) => <SelectItem key={value} value={`category:${value}`}>{value}</SelectItem>)}
-                </SelectContent>
-              </Select>}
+              <div><CardTitle>账单明细</CardTitle><CardDescription>{monthLabel(month)}{transactionPage ? ` · 共 ${transactionPage.total} 笔` : ""}</CardDescription></div>
+              <div className="transaction-controls" role="group" aria-label="账单筛选与排序">
+                <Select value={type} onValueChange={(value) => selectType(value === "income" || value === "expense" ? value : "all")}>
+                  <SelectTrigger size="sm" aria-label="收支类型"><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper" align="end">
+                    <SelectItem value="all">全部收支</SelectItem>
+                    <SelectItem value="income">收入</SelectItem>
+                    <SelectItem value="expense">支出</SelectItem>
+                  </SelectContent>
+                </Select>
+                {data.categories.length > 0 && <Select value={category ? `category:${category}` : "all"} onValueChange={(value) => selectCategory(value === "all" ? "" : value.slice("category:".length))}>
+                  <SelectTrigger size="sm" aria-label="账单分类"><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper" align="end">
+                    <SelectItem value="all">全部分类</SelectItem>
+                    {data.categories.map((value) => <SelectItem key={value} value={`category:${value}`}>{value}</SelectItem>)}
+                  </SelectContent>
+                </Select>}
+                <Select value={sort} onValueChange={(value) => selectSort(value === "amount" ? "amount" : "date")}>
+                  <SelectTrigger size="sm" aria-label="账单排序"><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper" align="end">
+                    <SelectItem value="date">日期从近到远</SelectItem>
+                    <SelectItem value="amount">金额从大到小</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent className="panel-content">
-              {transactions.loading ? <Skeleton className="chart-placeholder" aria-label="正在加载明细" /> : transactions.failed ? <EmptyPanel icon={CircleAlert}>账单加载失败，请刷新重试。</EmptyPanel> : transactionPage?.rows.length ? <TransactionTable rows={transactionPage.rows} /> : <EmptyPanel icon={List}>该月暂无账单</EmptyPanel>}
+              {transactions.loading ? <Skeleton className="chart-placeholder" aria-label="正在加载明细" /> : transactions.failed ? <EmptyPanel icon={CircleAlert}>账单加载失败，请刷新重试。</EmptyPanel> : transactionPage?.rows.length ? <TransactionTable rows={transactionPage.rows} /> : <EmptyPanel icon={List}>{category || type !== "all" ? "没有符合筛选条件的账单" : "该月暂无账单"}</EmptyPanel>}
               {(pageCursors.length > 0 || transactionPage?.nextCursor) && <div className="transaction-pagination" aria-label="账单分页">
                 <Button type="button" size="sm" variant="outline" disabled={pageCursors.length === 0 || transactions.loading} onClick={() => changePage(pageCursors.slice(0, -1))}><ChevronLeft size={16} />上一页</Button>
                 <span aria-live="polite">第 {pageCursors.length + 1} 页</span>
