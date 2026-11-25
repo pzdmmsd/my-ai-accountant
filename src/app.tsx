@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react"
-import { Activity, ArrowDownLeft, ArrowRight, ArrowUpRight, Bot, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, LayoutDashboard, List, Menu, Moon, PieChart, RefreshCw, Sun, Wallet, type LucideIcon } from "lucide-react"
+import { Activity, ArrowDownLeft, ArrowRight, ArrowUpRight, Bot, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, Coins, LayoutDashboard, List, Menu, Moon, PieChart, RefreshCw, Sun, Wallet, type LucideIcon } from "lucide-react"
 import type { Series } from "@/components/ledger-charts"
 import { LedgerQuestions } from "@/components/ledger-questions"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -20,6 +20,7 @@ const CategoryChart = lazy(() => import("@/components/ledger-charts").then(({ Ca
 
 const navigation = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
+  { id: "currency-expenses", label: "币种支出", icon: Coins },
   { id: "cash-flow", label: "年度收支", icon: ChartNoAxesColumnIncreasing },
   { id: "spending", label: "收支构成", icon: PieChart },
   { id: "ask-ledger", label: "AI 账单问答", icon: Bot },
@@ -209,6 +210,21 @@ export function App({ userId, askToken }: { userId: string; askToken: string }) 
               {budget.limit > 0 && <Progress value={Math.max(0, Math.min(utilization, 100))} className={cn("budget-progress", overBudget && "budget-over")} aria-label="本月净支出占预算比例" aria-valuetext={`${utilization}%`} />}
             </Metric>
           </section>}
+          {data?.currencyExpenses && <Card id="currency-expenses" className="dashboard-card currency-card">
+            <CardHeader className="panel-header">
+              <div><CardTitle role="heading" aria-level={2}>按币种统计支出</CardTitle><CardDescription>{monthLabel(month)} · 按交易原币汇总</CardDescription></div>
+            </CardHeader>
+            <CardContent className="panel-content">
+              {data.currencyExpenses.length ? <ul className="currency-expense-list" role="list" aria-label="各币种支出">
+                {data.currencyExpenses.map(({ currency, amount, count }) => (
+                  <li key={currency}>
+                    <strong>{new Intl.NumberFormat("zh-CN", { style: "currency", currency, currencyDisplay: "code", maximumFractionDigits: 6 }).format(amount)}</strong>
+                    <span>{count} 笔</span>
+                  </li>
+                ))}
+              </ul> : <p className="currency-empty">该月暂无可按币种统计的支出。</p>}
+            </CardContent>
+          </Card>}
           <LedgerQuestions token={askToken} month={month} />
           {data && <>
           <div className="chart-grid">
