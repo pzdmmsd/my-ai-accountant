@@ -20,6 +20,14 @@ test("monthly dashboard and complete transaction pages use the selected month an
   transaction("2025-01-31", "expense", "餐饮", 900, "other");
   transaction("2024-02-29", "expense", "交通", 45);
   transaction("2028-12-31", "income", "奖金", 800);
+  sqlite.exec(`INSERT INTO bills (user_id, date, type, amount_original, currency_original, amount_cny) VALUES
+    ('fixture', '2026-03-01', 'expense', 12.5, 'HKD', 11),
+    ('fixture', '2026-03-02', '支出', 10, ' hkd ', 9),
+    ('fixture', '2026-03-03', 'expense', 5.5, 'USD', 40),
+    ('fixture', '2026-03-03', 'expense', 30, 'CNY', 30),
+    ('fixture', '2026-03-03', 'income', 800, 'HKD', 720),
+    ('other', '2026-03-02', 'expense', 600, 'HKD', 540),
+    ('fixture', '2026-04-01', 'expense', 40, 'HKD', 35);`);
 
   const DB = {
     prepare: (sql) => ({ bind: (...args) => ({ all: async () => ({ results: sqlite.prepare(sql).all(...args) }) }) }),
@@ -32,15 +40,24 @@ test("monthly dashboard and complete transaction pages use the selected month an
     return response.json();
   }
 
-  assert.deepEqual(await json({ view: "months" }), ["2028-12", "2026-01", "2025-02", "2025-01", "2024-02"]);
+  assert.deepEqual(await json({ view: "months" }), ["2028-12", "2026-04", "2026-03", "2026-01", "2025-02", "2025-01", "2024-02"]);
   assert.equal((await json({ view: "month", month: "2024-02" })).budget.current, 45);
   assert.equal((await json({ view: "month", month: "2028-12" })).income, 800);
+  assert.deepEqual((await json({ view: "month", month: "2028-12" })).currencyExpenses, []);
+  const multicurrency = await json({ view: "month", month: "2026-03" });
+  assert.equal(multicurrency.budget.current, 90);
+  assert.deepEqual(multicurrency.currencyExpenses, [
+    { currency: "CNY", amount: 30, count: 1 },
+    { currency: "HKD", amount: 22.5, count: 2 },
+    { currency: "USD", amount: 5.5, count: 1 },
+  ]);
   for (const date of ["2024-02-29", "2028-12-31"]) {
     const data = await json({ view: "transactions", month: date.slice(0, 7), sort: "date_asc" });
     assert.equal(data.rows[0].date, date);
   }
   const summary = await json({ view: "month", month: "2025-01" });
   assert.equal(summary.income, 200);
+  assert.deepEqual(summary.currencyExpenses, [{ currency: "CNY", amount: 110, count: 104 }]);
   assert.deepEqual(summary.budget, { current: 110, limit: 75, isOver: true });
   assert.deepEqual(summary.annual.map(({ month, inc, exp }) => [month, inc, exp]), [["01", 200, 110], ["02", 0, 50]]);
   assert.deepEqual(summary.pie.map(({ category, value }) => [category, value]), [["餐饮", 103], ["未分类", 7]]);

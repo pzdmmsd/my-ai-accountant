@@ -147,11 +147,15 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .budget-progress.budget-over [data-slot="progress-indicator"] { background: var(--destructive); }
 
 .chart-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) repeat(2, minmax(0, 1fr)); gap: 18px; }
-.chart-card, .trend-card, .transactions-card, .questions-card { gap: 0; min-width: 0; padding: 0; }
+.chart-card, .trend-card, .transactions-card, .questions-card, .currency-card { gap: 0; min-width: 0; padding: 0; }
 .panel-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 9px; padding: 19px 19px 13px; }
 .panel-header [data-slot="card-title"] { font-size: 16px; font-weight: 740; }
 .panel-header [data-slot="card-description"] { margin-top: 5px; font-size: 12px; }
 .panel-content { min-width: 0; padding: 0 19px 17px; }
+.currency-expense-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr)); gap: 8px; }
+.currency-expense-list li { display: grid; align-content: start; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); }
+.currency-expense-list strong { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.currency-expense-list span, .currency-empty { color: var(--muted-foreground); font-size: 12px; }
 .series-buttons { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); }
 .series-button { padding-inline: 9px; height: 24px; color: var(--muted-foreground); border-radius: 5px; font-size: 11px; }
 .series-button.series-selected { background: var(--card); color: var(--primary); box-shadow: 0 1px 3px #17254818; }
@@ -220,7 +224,7 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .launch-card h2 { font-size: clamp(18px, 2.2vw, 23px); font-weight: 720; }
 .launch-card p { color: var(--muted-foreground); }
 .launch-icon { display: grid; width: 53px; height: 53px; place-items: center; margin-bottom: 4px; border-radius: 15px; background: var(--primary-subtle); color: var(--primary); }
-#overview, #cash-flow, #spending, #ask-ledger, #transactions { scroll-margin-top: 78px; }
+#overview, #currency-expenses, #cash-flow, #spending, #ask-ledger, #transactions { scroll-margin-top: 78px; }
 
 @media (max-width: 1120px) {
   .app-shell { grid-template-columns: 190px minmax(0, 1fr); }

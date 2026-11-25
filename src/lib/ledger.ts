@@ -1,6 +1,7 @@
 export type Category = { category: string; value: number }
 export type YearMonth = { month: string; exp: number; inc: number }
 export type DailyExpense = { date: string; value: number }
+export type CurrencyExpense = { currency: string; amount: number; count: number }
 export type Budget = { limit: number; current: number; isOver: boolean }
 
 export type Dashboard = {
@@ -8,6 +9,7 @@ export type Dashboard = {
   annual: YearMonth[]
   pie: Category[]
   incomePie: Category[]
+  currencyExpenses?: CurrencyExpense[]
   line: DailyExpense[]
   budget: Budget
   categories: string[]

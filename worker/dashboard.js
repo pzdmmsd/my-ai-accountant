@@ -4,6 +4,7 @@ export const income = "(lower(type) = 'income' OR type = '收入')";
 export const expense = "(lower(type) = 'expense' OR type = '支出')";
 export const defaultBudget = 5000;
 const amountRank = "abs(coalesce(amount_cny, 0))";
+const currencyCode = "upper(trim(currency_original))";
 const pageSize = 50;
 
 export function validMonth(month) {
@@ -17,7 +18,7 @@ export async function readAvailableMonths(db, userId) {
 
 export async function readDashboardMonth(db, userId, month) {
   const year = month.slice(0, 4);
-  const [settings, annual, composition, line, categories] = await db.batch([
+  const [settings, annual, composition, line, categories, currencyExpenses] = await db.batch([
     db.prepare("SELECT budget_limit FROM settings WHERE user_id = ?").bind(userId),
     db.prepare(`SELECT strftime('%m', date) AS month,
       SUM(CASE WHEN ${expense} THEN amount_cny ELSE 0 END) AS exp,
@@ -29,6 +30,9 @@ export async function readDashboardMonth(db, userId, month) {
     db.prepare(`SELECT date(date) AS day, SUM(amount_cny) AS value ${monthlyBills}
       AND ${expense} GROUP BY day ORDER BY day`).bind(userId, month),
     db.prepare(`SELECT DISTINCT ${categoryName} AS category ${monthlyBills} ORDER BY category`).bind(userId, month),
+    db.prepare(`SELECT ${currencyCode} AS currency, SUM(amount_original) AS amount, COUNT(*) AS count ${monthlyBills}
+      AND ${expense} AND amount_original IS NOT NULL AND ${currencyCode} GLOB '[A-Z][A-Z][A-Z]'
+      GROUP BY currency ORDER BY currency`).bind(userId, month),
   ]);
   const selectedMonth = annual.results.find((entry) => entry.month === month.slice(5));
   const limit = settings.results[0]?.budget_limit ?? defaultBudget;
@@ -45,6 +49,7 @@ export async function readDashboardMonth(db, userId, month) {
     annual: annual.results,
     pie,
     incomePie,
+    currencyExpenses: currencyExpenses.results,
     line: line.results.map(({ day, value }) => ({ date: day, value })),
     categories: categories.results.map(({ category }) => category),
   };
