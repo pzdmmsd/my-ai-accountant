@@ -166,7 +166,7 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .expense-dot { background: var(--primary); }
 .chart-surface { width: 100%; min-width: 0; }
 .cash-flow-chart { height: 242px; }
-.trend-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.trend-header { display: grid; grid-template: auto / minmax(0, 1fr) auto; }
 .trend-plot { height: 200px; overflow: auto hidden; }
 .trend-plot > :is(.trend-chart, .panel-empty) { height: 100%; }
 .weekly-trend-chart { min-width: 305px; }
