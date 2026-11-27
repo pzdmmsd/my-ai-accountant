@@ -262,17 +262,19 @@ export function App({ userId, askToken }: { userId: string; askToken: string }) 
               const period = weeks.length ? trendPeriods[kind] : "day"
               const weekly = period === "week"
               return <Card key={kind} className="dashboard-card trend-card">
-                <CardHeader className="panel-header">
+                <CardHeader className="panel-header trend-header">
                   <div>
                     <CardTitle role="heading" aria-level={2}>{label}趋势</CardTitle>
-                    <CardDescription>{monthLabel(month)} · {weekly ? "周一至周日，跨月周按整周统计" : `每日${label}`} · CNY</CardDescription>
+                    <CardDescription>{monthLabel(month)} · CNY</CardDescription>
                   </div>
                   <div className="series-buttons" role="group" aria-label={`${label}趋势统计周期`}>
                     {trendOptions.map(({ value, label: option }) => <Button key={value} type="button" size="sm" variant="ghost" className={cn("series-button", period === value && "series-selected")} aria-pressed={period === value} disabled={value === "week" && !weeks.length} onClick={() => setTrendPeriods((previous) => ({ ...previous, [kind]: value }))}>{option}</Button>)}
                   </div>
                 </CardHeader>
-                <CardContent className={cn("panel-content", weekly && "weekly-trend-content")}>
-                  {weekly || daily.length ? <Suspense fallback={<Skeleton className="trend-chart" />}><TrendChart daily={daily} weeks={weeks} month={month} period={period} kind={kind} /></Suspense> : <EmptyPanel icon={Activity}>该月暂无{label}记录</EmptyPanel>}
+                <CardContent className="panel-content">
+                  <div className="trend-plot">
+                    {weekly || daily.length ? <Suspense fallback={<Skeleton className="trend-chart" />}><TrendChart daily={daily} weeks={weeks} month={month} period={period} kind={kind} /></Suspense> : <EmptyPanel icon={Activity}>该月暂无{label}记录</EmptyPanel>}
+                  </div>
                 </CardContent>
               </Card>
             })}
