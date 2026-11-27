@@ -20,6 +20,14 @@ test("monthly dashboard and complete transaction pages use the selected month an
   transaction("2025-01-31", "expense", "餐饮", 900, "other");
   transaction("2024-02-29", "expense", "交通", 45);
   transaction("2028-12-31", "income", "奖金", 800);
+  transaction("2024-12-29", "expense", "交通", 900);
+  transaction("2024-12-30", "收入", "工资", 40);
+  transaction("2024-12-31T14:00:00Z", "expense", "交通", 3);
+  transaction("2026-02-22", "expense", "交通", 900);
+  transaction("2026-02-23", "expense", "交通", 13);
+  transaction("2026-02-23", "收入", "工资", 60);
+  transaction("2026-04-05T20:00:00Z", "income", "工资", 120);
+  transaction("2026-04-06", "expense", "交通", 900);
   sqlite.exec(`INSERT INTO bills (user_id, date, type, amount_original, currency_original, amount_cny) VALUES
     ('fixture', '2026-03-01', 'expense', 12.5, 'HKD', 11),
     ('fixture', '2026-03-02', '支出', 10, ' hkd ', 9),
@@ -40,7 +48,7 @@ test("monthly dashboard and complete transaction pages use the selected month an
     return response.json();
   }
 
-  assert.deepEqual(await json({ view: "months" }), ["2028-12", "2026-04", "2026-03", "2026-01", "2025-02", "2025-01", "2024-02"]);
+  assert.deepEqual(await json({ view: "months" }), ["2028-12", "2026-04", "2026-03", "2026-02", "2026-01", "2025-02", "2025-01", "2024-12", "2024-02"]);
   assert.equal((await json({ view: "month", month: "2024-02" })).budget.current, 45);
   assert.equal((await json({ view: "month", month: "2028-12" })).income, 800);
   assert.deepEqual((await json({ view: "month", month: "2028-12" })).currencyExpenses, []);
@@ -50,6 +58,22 @@ test("monthly dashboard and complete transaction pages use the selected month an
     { currency: "CNY", amount: 30, count: 1 },
     { currency: "HKD", amount: 22.5, count: 2 },
     { currency: "USD", amount: 5.5, count: 1 },
+  ]);
+  assert.deepEqual(multicurrency.incomeLine, [{ date: "2026-03-03", value: 720 }]);
+  assert.deepEqual(multicurrency.weekly, [
+    { start: "2026-02-23", end: "2026-03-01", income: 60, expense: 24 },
+    { start: "2026-03-02", end: "2026-03-08", income: 720, expense: 79 },
+    { start: "2026-03-09", end: "2026-03-15", income: 0, expense: 0 },
+    { start: "2026-03-16", end: "2026-03-22", income: 0, expense: 0 },
+    { start: "2026-03-23", end: "2026-03-29", income: 0, expense: 0 },
+    { start: "2026-03-30", end: "2026-04-05", income: 120, expense: 35 },
+  ]);
+  const emptyFebruary = await json({ view: "month", month: "2027-02" });
+  assert.deepEqual(emptyFebruary.weekly, [
+    { start: "2027-02-01", end: "2027-02-07", income: 0, expense: 0 },
+    { start: "2027-02-08", end: "2027-02-14", income: 0, expense: 0 },
+    { start: "2027-02-15", end: "2027-02-21", income: 0, expense: 0 },
+    { start: "2027-02-22", end: "2027-02-28", income: 0, expense: 0 },
   ]);
   for (const date of ["2024-02-29", "2028-12-31"]) {
     const data = await json({ view: "transactions", month: date.slice(0, 7), sort: "date_asc" });
@@ -64,6 +88,10 @@ test("monthly dashboard and complete transaction pages use the selected month an
   assert.deepEqual(summary.incomePie, [{ category: "工资", value: 200 }]);
   assert.deepEqual((await json({ view: "month", month: "2025-02" })).incomePie, []);
   assert.deepEqual(summary.line, [{ date: "2025-01-01", value: 7 }, { date: "2025-01-31", value: 103 }]);
+  assert.deepEqual(summary.incomeLine, [{ date: "2025-01-01", value: 200 }]);
+  assert.deepEqual(summary.weekly[0], { start: "2024-12-30", end: "2025-01-05", income: 240, expense: 10 });
+  assert.deepEqual(summary.weekly.at(-1), { start: "2025-01-27", end: "2025-02-02", income: 0, expense: 153 });
+  assert.deepEqual((await json({ view: "month", month: "2024-12" })).weekly.at(-1), summary.weekly[0]);
   assert(summary.categories.includes("工资"));
 
   const first = await json({ view: "transactions", month: "2025-01" });

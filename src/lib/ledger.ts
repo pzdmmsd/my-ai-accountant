@@ -1,6 +1,8 @@
 export type Category = { category: string; value: number }
 export type YearMonth = { month: string; exp: number; inc: number }
-export type DailyExpense = { date: string; value: number }
+export type DailyAmount = { date: string; value: number }
+export type WeeklyTotals = { start: string; end: string; income: number; expense: number }
+export type TrendPeriod = "day" | "week"
 export type CurrencyExpense = { currency: string; amount: number; count: number }
 export type Budget = { limit: number; current: number; isOver: boolean }
 
@@ -10,7 +12,9 @@ export type Dashboard = {
   pie: Category[]
   incomePie: Category[]
   currencyExpenses?: CurrencyExpense[]
-  line: DailyExpense[]
+  line: DailyAmount[]
+  incomeLine?: DailyAmount[]
+  weekly?: WeeklyTotals[]
   budget: Budget
   categories: string[]
 }

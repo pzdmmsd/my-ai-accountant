@@ -167,6 +167,8 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .chart-surface { width: 100%; min-width: 0; }
 .cash-flow-chart { height: 242px; }
 .trend-chart { height: 185px; }
+.weekly-trend-content { overflow-x: auto; }
+.weekly-trend-chart { min-width: 305px; height: 200px; }
 .chart-placeholder { min-height: 146px; margin-top: 5px; }
 .donut-wrap { position: relative; margin: 1px 0 8px; }
 .donut-chart { width: 100%; height: 142px; }
@@ -224,7 +226,7 @@ code { padding: 2px 4px; border-radius: 4px; background: var(--muted); font-size
 .launch-card h2 { font-size: clamp(18px, 2.2vw, 23px); font-weight: 720; }
 .launch-card p { color: var(--muted-foreground); }
 .launch-icon { display: grid; width: 53px; height: 53px; place-items: center; margin-bottom: 4px; border-radius: 15px; background: var(--primary-subtle); color: var(--primary); }
-#overview, #currency-expenses, #cash-flow, #spending, #ask-ledger, #transactions { scroll-margin-top: 78px; }
+#overview, #currency-expenses, #cash-flow, #spending, #trends, #ask-ledger, #transactions { scroll-margin-top: 78px; }
 
 @media (max-width: 1120px) {
   .app-shell { grid-template-columns: 190px minmax(0, 1fr); }

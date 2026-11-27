@@ -11,11 +11,11 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { currentMonth, ledgerRequest, money, monthLabel, originalAmount, type Dashboard, type Transaction, type TransactionPage, type TransactionSort, type TransactionType } from "@/lib/ledger"
+import { currentMonth, ledgerRequest, money, monthLabel, originalAmount, type Dashboard, type Transaction, type TransactionPage, type TransactionSort, type TransactionType, type TrendPeriod } from "@/lib/ledger"
 import { cn } from "@/lib/utils"
 
 const CashFlowChart = lazy(() => import("@/components/ledger-charts").then(({ CashFlowChart }) => ({ default: CashFlowChart })))
-const DailyChart = lazy(() => import("@/components/ledger-charts").then(({ DailyChart }) => ({ default: DailyChart })))
+const TrendChart = lazy(() => import("@/components/ledger-charts").then(({ TrendChart }) => ({ default: TrendChart })))
 const CategoryChart = lazy(() => import("@/components/ledger-charts").then(({ CategoryChart }) => ({ default: CategoryChart })))
 
 const navigation = [
@@ -23,6 +23,7 @@ const navigation = [
   { id: "currency-expenses", label: "币种支出", icon: Coins },
   { id: "cash-flow", label: "年度收支", icon: ChartNoAxesColumnIncreasing },
   { id: "spending", label: "收支构成", icon: PieChart },
+  { id: "trends", label: "收支趋势", icon: Activity },
   { id: "ask-ledger", label: "AI 账单问答", icon: Bot },
   { id: "transactions", label: "账单明细", icon: List },
 ]
@@ -30,6 +31,8 @@ const navigation = [
 const seriesOptions: { value: Series; label: string }[] = [
   { value: "both", label: "全部" }, { value: "income", label: "收入" }, { value: "expense", label: "支出" },
 ]
+const trendKinds = [{ kind: "expense", label: "支出" }, { kind: "income", label: "收入" }] as const
+const trendOptions = [{ value: "day", label: "按日" }, { value: "week", label: "按周" }] as const
 
 type Result<T> = { query: string; refresh: number; data?: T; failed?: true }
 
@@ -102,6 +105,7 @@ export function App({ userId, askToken }: { userId: string; askToken: string }) 
   const [sort, setSort] = useState<TransactionSort>("date")
   const [pageCursors, setPageCursors] = useState<string[]>([])
   const [series, setSeries] = useState<Series>("both")
+  const [trendPeriods, setTrendPeriods] = useState<Record<TransactionType, TrendPeriod>>({ expense: "day", income: "day" })
   const [section, setSection] = useState(window.location.hash.slice(1) || "overview")
   const [menuOpen, setMenuOpen] = useState(false)
   const [dark, setDark] = useState(() => {
@@ -251,10 +255,28 @@ export function App({ userId, askToken }: { userId: string; askToken: string }) 
             </Card>)}
           </div>
 
-          <Card className="dashboard-card trend-card">
-            <CardHeader className="panel-header"><div><CardTitle>支出趋势</CardTitle><CardDescription>{monthLabel(month)}每日支出 · CNY</CardDescription></div><Badge variant="secondary"><Activity size={13} />日支出</Badge></CardHeader>
-            <CardContent className="panel-content">{data.line.length ? <Suspense fallback={<Skeleton className="trend-chart" />}><DailyChart data={data.line} month={month} /></Suspense> : <EmptyPanel icon={Activity}>该月暂无日支出记录</EmptyPanel>}</CardContent>
-          </Card>
+          <section id="trends" className="dashboard-content" aria-label="收支趋势">
+            {trendKinds.map(({ kind, label }) => {
+              const daily = kind === "income" ? data.incomeLine ?? [] : data.line
+              const weeks = data.weekly ?? []
+              const period = weeks.length ? trendPeriods[kind] : "day"
+              const weekly = period === "week"
+              return <Card key={kind} className="dashboard-card trend-card">
+                <CardHeader className="panel-header">
+                  <div>
+                    <CardTitle role="heading" aria-level={2}>{label}趋势</CardTitle>
+                    <CardDescription>{monthLabel(month)} · {weekly ? "周一至周日，跨月周按整周统计" : `每日${label}`} · CNY</CardDescription>
+                  </div>
+                  <div className="series-buttons" role="group" aria-label={`${label}趋势统计周期`}>
+                    {trendOptions.map(({ value, label: option }) => <Button key={value} type="button" size="sm" variant="ghost" className={cn("series-button", period === value && "series-selected")} aria-pressed={period === value} disabled={value === "week" && !weeks.length} onClick={() => setTrendPeriods((previous) => ({ ...previous, [kind]: value }))}>{option}</Button>)}
+                  </div>
+                </CardHeader>
+                <CardContent className={cn("panel-content", weekly && "weekly-trend-content")}>
+                  {weekly || daily.length ? <Suspense fallback={<Skeleton className="trend-chart" />}><TrendChart daily={daily} weeks={weeks} month={month} period={period} kind={kind} /></Suspense> : <EmptyPanel icon={Activity}>该月暂无{label}记录</EmptyPanel>}
+                </CardContent>
+              </Card>
+            })}
+          </section>
 
           <Card id="transactions" className="dashboard-card transactions-card">
             <CardHeader className="panel-header">
