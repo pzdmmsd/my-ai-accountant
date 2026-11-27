@@ -16,9 +16,25 @@ export async function readAvailableMonths(db, userId) {
   return results.flatMap(({ m }) => m && validMonth(m) ? [m] : []);
 }
 
+function weeksOverlappingMonth(month) {
+  const monday = new Date(`${month}-01T00:00:00Z`);
+  const last = new Date(monday);
+  last.setUTCMonth(last.getUTCMonth() + 1, 0);
+  monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+
+  const weeks = [];
+  for (; monday <= last; monday.setUTCDate(monday.getUTCDate() + 7)) {
+    const sunday = new Date(monday);
+    sunday.setUTCDate(sunday.getUTCDate() + 6);
+    weeks.push({ start: new Date(monday), end: sunday });
+  }
+  return weeks;
+}
+
 export async function readDashboardMonth(db, userId, month) {
   const year = month.slice(0, 4);
-  const [settings, annual, composition, line, categories, currencyExpenses] = await db.batch([
+  const weeks = weeksOverlappingMonth(month);
+  const [settings, annual, composition, daily, categories, currencyExpenses] = await db.batch([
     db.prepare("SELECT budget_limit FROM settings WHERE user_id = ?").bind(userId),
     db.prepare(`SELECT strftime('%m', date) AS month,
       SUM(CASE WHEN ${expense} THEN amount_cny ELSE 0 END) AS exp,
@@ -27,8 +43,11 @@ export async function readDashboardMonth(db, userId, month) {
     db.prepare(`SELECT CASE WHEN ${income} THEN 'income' ELSE 'expense' END AS direction,
       ${categoryName} AS category, SUM(amount_cny) AS value ${monthlyBills}
       AND (${income} OR ${expense}) GROUP BY direction, ${categoryName} ORDER BY value DESC, category`).bind(userId, month),
-    db.prepare(`SELECT date(date) AS day, SUM(amount_cny) AS value ${monthlyBills}
-      AND ${expense} GROUP BY day ORDER BY day`).bind(userId, month),
+    db.prepare(`SELECT date(date) AS day, unixepoch(date(date)) AS daySecond,
+      SUM(CASE WHEN ${expense} THEN amount_cny END) AS expense,
+      SUM(CASE WHEN ${income} THEN amount_cny END) AS income
+      FROM bills WHERE user_id = ? AND unixepoch(date(date)) BETWEEN ? AND ? AND (${expense} OR ${income})
+      GROUP BY day ORDER BY day`).bind(userId, weeks[0].start.getTime() / 1000, weeks.at(-1).end.getTime() / 1000),
     db.prepare(`SELECT DISTINCT ${categoryName} AS category ${monthlyBills} ORDER BY category`).bind(userId, month),
     db.prepare(`SELECT ${currencyCode} AS currency, SUM(amount_original) AS amount, COUNT(*) AS count ${monthlyBills}
       AND ${expense} AND amount_original IS NOT NULL AND ${currencyCode} GLOB '[A-Z][A-Z][A-Z]'
@@ -37,6 +56,19 @@ export async function readDashboardMonth(db, userId, month) {
   const selectedMonth = annual.results.find((entry) => entry.month === month.slice(5));
   const limit = settings.results[0]?.budget_limit ?? defaultBudget;
   const current = selectedMonth?.exp ?? 0;
+  const monthDays = daily.results.filter(({ day }) => day.startsWith(`${month}-`));
+  const weekly = weeks.map(({ start, end }) => {
+    const firstSecond = start.getTime() / 1000;
+    const lastSecond = end.getTime() / 1000;
+    let weeklyIncome = 0;
+    let weeklyExpense = 0;
+    for (const day of daily.results) {
+      if (day.daySecond < firstSecond || day.daySecond > lastSecond) continue;
+      weeklyIncome += day.income ?? 0;
+      weeklyExpense += day.expense ?? 0;
+    }
+    return { start: start.toISOString().split("T")[0], end: end.toISOString().split("T")[0], income: weeklyIncome, expense: weeklyExpense };
+  });
 
   const pie = [];
   const incomePie = [];
@@ -50,7 +82,9 @@ export async function readDashboardMonth(db, userId, month) {
     pie,
     incomePie,
     currencyExpenses: currencyExpenses.results,
-    line: line.results.map(({ day, value }) => ({ date: day, value })),
+    line: monthDays.flatMap(({ day, expense: value }) => value === null ? [] : [{ date: day, value }]),
+    incomeLine: monthDays.flatMap(({ day, income: value }) => value === null ? [] : [{ date: day, value }]),
+    weekly,
     categories: categories.results.map(({ category }) => category),
   };
 }

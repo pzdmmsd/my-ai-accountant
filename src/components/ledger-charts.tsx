@@ -1,6 +1,6 @@
 import { Cell, Pie, PieChart, Bar, BarChart, Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts"
 import { cn } from "@/lib/utils"
-import { compactAmount, money, type Category, type DailyExpense, type YearMonth } from "@/lib/ledger"
+import { compactAmount, money, type Category, type DailyAmount, type TransactionType, type TrendPeriod, type WeeklyTotals, type YearMonth } from "@/lib/ledger"
 
 export type Series = "both" | "income" | "expense"
 
@@ -78,23 +78,42 @@ function CategoryTooltip({ active, payload, total }: Pick<TooltipProps<number, s
   </div>
 }
 
-export function DailyChart({ data, month }: { data: DailyExpense[]; month: string }) {
+function dailyPoints(data: DailyAmount[], month: string) {
   const values = new Map(data.map(({ date, value }) => [date, value]))
   const last = new Date(`${month}-01T00:00:00Z`)
   last.setUTCMonth(last.getUTCMonth() + 1, 0)
-  const dates = Array.from({ length: last.getUTCDate() }, (_, index) => {
+  return Array.from({ length: last.getUTCDate() }, (_, index) => {
     const date = `${month}-${String(index + 1).padStart(2, "0")}`
-    return { date, value: values.get(date) ?? 0 }
+    return { label: date, value: values.get(date) ?? 0 }
   })
-  return <div className="chart-surface trend-chart" role="img" aria-label="每日支出折线图">
+}
+
+function WeekTick({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) {
+  const [start, end] = (payload?.value ?? "").split(" 至 ")
+  if (!end) return null
+  return <text x={x} y={y} textAnchor="middle" fill="var(--muted-foreground)" fontSize={10}>
+    <tspan x={x} dy=".75em">{start.slice(-5).replace("-", "/")}</tspan>
+    <tspan x={x} dy="1.25em">至 {end.slice(-5).replace("-", "/")}</tspan>
+  </text>
+}
+
+export function TrendChart({ daily, weeks, month, period, kind }: { daily: DailyAmount[]; weeks: WeeklyTotals[]; month: string; period: TrendPeriod; kind: TransactionType }) {
+  const weekly = period === "week"
+  const points = weekly ? weeks.map((week) => ({ label: `${week.start} 至 ${week.end}`, value: week[kind] })) : dailyPoints(daily, month)
+  const label = kind === "income" ? "收入" : "支出"
+  const color = kind === "income" ? "var(--color-income)" : "var(--primary)"
+  const gradient = `${kind}-trend-background`
+  return <div className={cn("chart-surface trend-chart", weekly && "weekly-trend-chart")} role="img" aria-label={`${weekly ? "每周" : "每日"}${label}折线图`}>
     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-      <AreaChart data={dates} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-        <defs><linearGradient id="expenses-background" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="var(--primary)" stopOpacity={0.18} /><stop offset="95%" stopColor="var(--primary)" stopOpacity={0.02} /></linearGradient></defs>
+      <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <defs><linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor={color} stopOpacity={0.18} /><stop offset="95%" stopColor={color} stopOpacity={0.02} /></linearGradient></defs>
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 4" />
-        <XAxis {...axisProps} dataKey="date" minTickGap={24} tickMargin={10} tickFormatter={(date: string) => date.slice(5)} />
+        {weekly
+          ? <XAxis {...axisProps} dataKey="label" interval={0} tick={<WeekTick />} tickMargin={8} height={42} padding={{ left: 16, right: 16 }} />
+          : <XAxis {...axisProps} dataKey="label" minTickGap={24} tickMargin={10} tickFormatter={(date: string) => date.slice(5)} />}
         <YAxis {...axisProps} width={45} tickFormatter={compactAmount} allowDecimals={false} />
         <Tooltip formatter={(value: number) => money(value)} contentStyle={tooltipStyle} />
-        <Area type="monotone" dataKey="value" name="支出" stroke="var(--primary)" strokeWidth={2.5} fill="url(#expenses-background)" dot={false} activeDot={{ r: 5 }} isAnimationActive={false} />
+        <Area type="monotone" dataKey="value" name={label} stroke={color} strokeWidth={2.5} fill={`url(#${gradient})`} dot={weekly ? { r: 3 } : false} activeDot={{ r: 5 }} isAnimationActive={false} />
       </AreaChart>
     </ResponsiveContainer>
   </div>
